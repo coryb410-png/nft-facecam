@@ -5,6 +5,33 @@
   // inner-lip outline (MediaPipe face mesh indices)
   const INNER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
   const CW = 48, CH = 28;
+  const UPPER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308];
+  const LOWER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308];
+  const K = 17; // samples across the mouth
+
+  // sample a curve of (u, v) points at u = -1 .. 1
+  function sample(pts) {
+    pts.sort((a, b) => a[0] - b[0]);
+    const out = [];
+    for (let k = 0; k < K; k++) {
+      const u = -1 + 2 * k / (K - 1);
+      // smooth Catmull-Rom curve through the lip points (no polygon corners)
+      let v = pts[0][1];
+      const n = pts.length;
+      if (u >= pts[n - 1][0]) v = pts[n - 1][1];
+      else for (let i = 0; i < n - 1; i++) {
+        const [u1, v1] = pts[i], [u2, v2] = pts[i + 1];
+        if (u >= u1 && u <= u2) {
+          const v0 = (pts[i - 1] || pts[i])[1], v3 = (pts[i + 2] || pts[i + 1])[1];
+          const t = u2 > u1 ? (u - u1) / (u2 - u1) : 0, t2 = t * t, t3 = t2 * t;
+          v = 0.5 * (2 * v1 + (-v0 + v2) * t + (2 * v0 - 5 * v1 + 4 * v2 - v3) * t2 + (-v0 + 3 * v1 - 3 * v2 + v3) * t3);
+          break;
+        }
+      }
+      out.push(v);
+    }
+    return out;
+  }
 
   function inside(poly, x, y) {
     let c = false;
@@ -20,11 +47,42 @@
       this.cv = document.createElement('canvas'); this.cv.width = CW; this.cv.height = CH;
       this.ctx = this.cv.getContext('2d', { willReadFrequently: true });
       this.v = { teethU: 0, teethL: 0, tongue: 0, open: 0 };
+      this.lips = null; this.baseW = 0;
     }
 
+    /** The user's inner-lip outline in mouth-local units (x: corner -1..1, y: down, in half-widths). */
+    readLips(lm, W, H, mirror) {
+      const S = (i) => [(mirror ? 1 - lm[i].x : lm[i].x) * W, lm[i].y * H];
+      let a = S(78), b = S(308);
+      if (a[0] > b[0]) [a, b] = [b, a];
+      const c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const half = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2 || 1;
+      const e = [(b[0] - a[0]) / (2 * half), (b[1] - a[1]) / (2 * half)];
+      const toUV = (i) => { const p = S(i), dx = p[0] - c[0], dy = p[1] - c[1]; return [(dx * e[0] + dy * e[1]) / half, (-dx * e[1] + dy * e[0]) / half]; };
+      let up = sample(UPPER.map(toUV)), lo = sample(LOWER.map(toUV));
+      // closed lips: no opening (avoid flicker from tiny gaps)
+      const faceW = Math.hypot((lm[234].x - lm[454].x) * W, (lm[234].y - lm[454].y) * H) || 1;
+      const gapMid = lo[8] - up[8];
+      if (gapMid < 0.06) { const mid = up.map((v, i) => (v + lo[i]) / 2); up = mid.slice(); lo = mid.slice(); }
+      // mouth width vs. your normal width (learned while the mouth is relaxed)
+      const ratio = (2 * half) / faceW;
+      if (!this.baseW) this.baseW = ratio;
+      else if (gapMid < 0.25) this.baseW += (ratio - this.baseW) * 0.01;
+      const w = Math.min(1.4, Math.max(0.65, ratio / this.baseW));
+      if (!this.lips) this.lips = { up, lo, w };
+      else {
+        const L = this.lips;
+        for (let k = 0; k < K; k++) { L.up[k] += (up[k] - L.up[k]) * 0.55; L.lo[k] += (lo[k] - L.lo[k]) * 0.55; }
+        L.w += (w - L.w) * 0.4;
+      }
+      return this.lips;
+    }
+    reset() { this.lips = null; this.baseW = 0; }
+
     /** lm = raw landmarks (unmirrored, normalised); video = camera element */
-    read(lm, video) {
+    read(lm, video, mirror) {
       const W = video.videoWidth, H = video.videoHeight;
+      this.readLips(lm, W, H, mirror);
       const P = INNER.map(i => [lm[i].x * W, lm[i].y * H]);
       const faceH = Math.hypot((lm[10].x - lm[152].x) * W, (lm[10].y - lm[152].y) * H) || 1;
       const lip = Math.hypot((lm[13].x - lm[14].x) * W, (lm[13].y - lm[14].y) * H);
@@ -68,7 +126,7 @@
         const a = res[k] > this.v[k] ? 0.45 : 0.2;
         this.v[k] += (res[k] - this.v[k]) * a;
       }
-      return this.v;
+      return { ...this.v, lips: this.lips };
     }
   }
   FC.MouthReader = MouthReader;

@@ -242,7 +242,7 @@
           W, H, R, opacity: 1, size: 1, depth: this.app.settings.depth,
           anchor: [W / 2, H / 2], faceSize: g.sN * k,
           headOnly: o.headOnly, crop: o.crop, fit: o.headOnly, face: { cx: W / 2, cy: H / 2 + 20, w: 150, h: 175 },
-          expr: { blinkL: blink, blinkR: blink, jaw: talk, teethU: o.teeth === false ? 0 : 0.9, teethL: o.teeth === false ? 0 : 0.6, tongue: o.teeth === false ? 0 : talk * 0.8, smileL: 0.2, smileR: 0.2, gazeX: o.eyes === false ? 0 : Math.sin(t * 0.7) * 0.6 }
+          expr: { blinkL: blink, blinkR: blink, jaw: talk, teethU: o.teeth === false ? 0 : 0.9, teethL: o.teeth === false ? 0 : 0.6, tongue: o.teeth === false ? 0 : talk * 0.8, smileL: 0.2, smileR: 0.2, lips: o.mouth === false ? null : FaceEditor.talkLips(talk), gazeX: o.eyes === false ? 0 : Math.sin(t * 0.7) * 0.6 }
         });
         this.anim = requestAnimationFrame(tick);
       };
@@ -250,5 +250,15 @@
       this.anim = requestAnimationFrame(tick);
     }
   }
+  // a natural talking mouth outline for the preview (same format as the live lip tracking)
+  FaceEditor.talkLips = (t) => {
+    const up = [], lo = [];
+    for (let k = 0; k < 17; k++) {
+      const u = -1 + k / 8, arc = Math.sqrt(Math.max(0, 1 - u * u));
+      up.push(-0.05 * arc - t * 0.22 * Math.pow(arc, 0.8));
+      lo.push(0.05 * arc + t * 0.62 * Math.pow(arc, 0.7));
+    }
+    return { up, lo, w: 1 - t * 0.12 };
+  };
   FC.FaceEditor = FaceEditor;
 })();

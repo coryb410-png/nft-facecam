@@ -40,6 +40,9 @@ uniform sampler2D u_tex;
 uniform vec2 u_size, u_eL, u_eR, u_er, u_m, u_blink, u_smile, u_brow, u_gaze, u_headC, u_headR;
 uniform float u_mw, u_mh, u_jaw, u_pucker, u_opacity, u_oval, u_crop, u_cut, u_chin, u_fade, u_tongue;
 uniform vec2 u_teeth;
+uniform float u_lipUp[17];
+uniform float u_lipLo[17];
+uniform float u_lipOn, u_lipW, u_lipK;
 uniform vec4 u_box;
 uniform vec3 u_lid;
 
@@ -92,13 +95,34 @@ void main(){
   src.x = u_m.x + (src.x - u_m.x) * (1. + u_pucker * 0.5 * exp(-dot(dm,dm)));
 
   // mouth opening
-  float mw = u_mw * (1. + 0.12 * (u_smile.x + u_smile.y) - 0.3 * u_pucker);
-  float dx = (p.x - u_m.x) / (mw * 1.05);
-  float shape = dx*dx < 1. ? pow(1. - dx*dx, 1.5) : 0.;
-  float gap = u_jaw * u_mh * (1. + 0.35 * u_tongue);
-  float gUp = gap * 0.28 * shape, gDn = gap * 0.72 * shape;
   float rel = p.y - u_m.y;
-  bool inGap = shape > 0.002 && gap > 0.5 && rel > -gUp && rel < gDn;
+  float mw, shape, topPx, botPx;
+  if (u_lipOn > 0.5) {
+    // copy the user's real inner-lip outline (9 samples corner -> corner, in mouth half-widths)
+    mw = u_mw * u_lipW;
+    float uu = (p.x - u_m.x) / mw;
+    float f = clamp((uu + 1.) * 8., 0., 16.);
+    float top = 0., bot = 0.;
+    for (int i = 0; i < 16; i++) {
+      if (f >= float(i) && f <= float(i + 1)) {
+        float w = f - float(i);
+        top = mix(u_lipUp[i], u_lipUp[i + 1], w);
+        bot = mix(u_lipLo[i], u_lipLo[i + 1], w);
+      }
+    }
+    float inside = 1. - smoothstep(0.97, 1.0, abs(uu));
+    shape = inside * clamp(1. - uu * uu, 0., 1.);
+    topPx = top * u_mw * u_lipK * inside;
+    botPx = bot * u_mw * u_lipK * inside;
+  } else {
+    mw = u_mw * (1. + 0.12 * (u_smile.x + u_smile.y) - 0.3 * u_pucker);
+    float dx = (p.x - u_m.x) / (mw * 1.05);
+    shape = dx*dx < 1. ? pow(1. - dx*dx, 1.5) : 0.;
+    float gap = u_jaw * u_mh * (1. + 0.35 * u_tongue);
+    topPx = -gap * 0.28 * shape; botPx = gap * 0.72 * shape;
+  }
+  float gUp = max(0., -topPx), gDn = max(0., botPx);
+  bool inGap = botPx - topPx > 0.6 && rel > topPx && rel < botPx;
   if (rel >= gDn) src.y -= gDn * (1. - smoothstep(0., u_mw * 2.6, rel - gDn));
   else if (rel <= -gUp) src.y += gUp * (1. - smoothstep(0., u_mw * 1.2, -rel - gUp));
 
@@ -109,8 +133,8 @@ void main(){
   float a = c.a;
 
   if (inGap) {
-    float H = gUp + gDn;                       // opening height here (px)
-    float yT = rel + gUp, yB = gDn - rel;      // distance from top lip / bottom lip
+    float H = botPx - topPx;                   // opening height here (px)
+    float yT = rel - topPx, yB = botPx - rel;  // distance from top lip / bottom lip
     float t = yT / max(H, 1e-3);
     // dark mouth cavity, darker towards the back and the corners
     vec3 inner = mix(vec3(0.24, 0.04, 0.07), vec3(0.06, 0.01, 0.02), smoothstep(0., 0.6, t));
@@ -330,6 +354,14 @@ void main(){
       gl.uniform1f(L.u_jaw, Math.max(e.jaw || 0, e.open || 0));
       gl.uniform2f(L.u_teeth, e.teethU || 0, e.teethL || 0);
       gl.uniform1f(L.u_tongue, e.tongue || 0);
+      if (e.lips) {
+        gl.uniform1f(L.u_lipOn, 1);
+        gl.uniform1fv(L['u_lipUp[0]'] || L.u_lipUp, new Float32Array(e.lips.up));
+        gl.uniform1fv(L['u_lipLo[0]'] || L.u_lipLo, new Float32Array(e.lips.lo));
+        gl.uniform1f(L.u_lipW, e.lips.w || 1);
+        // small cartoon mouths get a slightly bigger opening so it stays readable
+        gl.uniform1f(L.u_lipK, Math.min(2.4, Math.max(1.1, 0.75 * g.mh / Math.max(1, g.mw))));
+      } else gl.uniform1f(L.u_lipOn, 0);
       gl.uniform2f(L.u_smile, e.smileL || 0, e.smileR || 0);
       gl.uniform1f(L.u_pucker, e.pucker || 0);
       gl.uniform2f(L.u_brow, e.browL || 0, e.browR || 0);

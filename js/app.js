@@ -308,7 +308,7 @@
 
     // "Read my face first": blur the camera, learn the face for ~1s, then reveal the NFT.
     startScan() {
-      this.solver.reset();
+      this.solver.reset(); this.mouth.reset();
       this.scanning = true; this.scanCount = 0; this.revealAt = 0;
       const el = $('scan'); el.classList.remove('done', 'locked'); el.classList.add('show');
       $('scanText').textContent = 'Reading your face…';
@@ -408,10 +408,10 @@
         if (r && r.ready) {
           const o = this.current ? avatarOpts(this.current) : FC.AVATAR_OPTS;
           const expr = { ...pose.expr };
-          if (det && o.teeth !== false) { try { Object.assign(expr, this.mouth.read(det.landmarks, v)); } catch (e) { /* ignore */ } }
+          if (det && o.teeth !== false) { try { Object.assign(expr, this.mouth.read(det.landmarks, v, s.mirror)); } catch (e) { /* ignore */ } }
           if (window.__forceExpr) Object.assign(expr, window.__forceExpr); // testing hook
           if (o.eyes === false) { expr.blinkL = expr.blinkR = expr.gazeX = expr.gazeY = 0; }
-          if (o.mouth === false) { expr.jaw = expr.smileL = expr.smileR = expr.pucker = expr.open = expr.teethU = expr.teethL = expr.tongue = 0; }
+          if (o.mouth === false) { expr.jaw = expr.smileL = expr.smileR = expr.pucker = expr.open = expr.teethU = expr.teethL = expr.tongue = 0; expr.lips = null; }
           // pop-in after the scan
           const k = this.revealAt ? Math.min(1, (ts - this.revealAt) / 450) : 1;
           const pop = k < 1 ? 0.75 + 0.25 * (1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2)) : 1;
