@@ -139,8 +139,8 @@
         this.eyeBase[side] = v < this.eyeBase[side] ? lerp(this.eyeBase[side], v, 0.3) : this.eyeBase[side] + 0.0015;
       }
       const blinkFor = (side) => {
-        const v = b('eyeBlink' + side), base = Math.min(this.eyeBase[side], 0.55);
-        return clamp((v - base - 0.12) / Math.max(0.2, (0.85 - base) * 0.6) * (0.6 + 0.4 * g));
+        const v = b('eyeBlink' + side), base = Math.min(this.eyeBase[side], 0.75);
+        return clamp((v - base - 0.16) / Math.max(0.15, (0.95 - base) * 0.6) * (0.6 + 0.4 * g));
       };
       const gazeSubjLeft = (b('eyeLookOutLeft') + b('eyeLookInRight') - b('eyeLookInLeft') - b('eyeLookOutRight')) / 2;
       const target = {

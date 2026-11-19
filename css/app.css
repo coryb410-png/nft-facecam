@@ -288,3 +288,22 @@ html.mobile .toast.show { transform: none; }
 .ed-guide.show { display: block; animation: fade .25s; }
 .ed-guide i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: -1px; }
 #edGuided { margin-top: 4px; }
+
+/* ---------- face scan ---------- */
+.scan { position: absolute; inset: 0; display: none; z-index: 2; pointer-events: none; }
+.scan.show { display: block; animation: fade .3s; }
+.scan.done { animation: scanout .5s forwards; }
+@keyframes scanout { to { opacity: 0; transform: scale(1.04); } }
+.scan-oval { position: absolute; left: 50%; top: 46%; width: min(58vw, 46vh, 360px); aspect-ratio: 3 / 4; transform: translate(-50%, -50%);
+  border-radius: 50%; border: 3px solid rgba(34, 240, 208, .85); box-shadow: 0 0 0 9999px rgba(5, 4, 12, .35), 0 0 40px rgba(34, 240, 208, .45), inset 0 0 40px rgba(34, 240, 208, .25); overflow: hidden; }
+.scan.locked .scan-oval { border-color: #2ff59a; box-shadow: 0 0 0 9999px rgba(5, 4, 12, .35), 0 0 50px rgba(47, 245, 154, .7), inset 0 0 50px rgba(47, 245, 154, .35); }
+.scan-line { position: absolute; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, transparent, #22f0d0, #ff4fd8, transparent); box-shadow: 0 0 18px #22f0d0; animation: scanline 1.4s ease-in-out infinite alternate; }
+@keyframes scanline { from { top: 6%; } to { top: 94%; } }
+.scan-info { position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 12px 18px 12px 12px;
+  border-radius: 18px; background: rgba(10, 8, 24, .78); border: 1px solid var(--line2); backdrop-filter: blur(10px); white-space: nowrap; }
+html.mobile .scan-info { bottom: calc(120px + env(safe-area-inset-bottom)); }
+.scan-info b { display: block; font-size: 15px; } .scan-info small { color: var(--muted); font-size: 12.5px; }
+.scan-ring { width: 40px; height: 40px; transform: rotate(-90deg); flex: none; }
+.scan-ring circle { fill: none; stroke-width: 4; }
+.scan-ring .bg { stroke: rgba(255, 255, 255, .12); }
+.scan-ring .fg { stroke: #22f0d0; stroke-linecap: round; stroke-dasharray: 119.4; stroke-dashoffset: 119.4; transition: stroke-dashoffset .15s; }

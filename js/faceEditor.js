@@ -132,7 +132,7 @@
       this.rec = rec; this.img = img;
       this.cv.width = img.width; this.cv.height = img.height;
       this.pts = JSON.parse(JSON.stringify(rec.points || FC.imageProcess.defaultPoints(img.width, img.height)));
-      this.opts = { ...FC.AVATAR_OPTS, ...(rec.opts && rec.opts.v === 2 ? rec.opts : {}) };
+      this.opts = { ...FC.AVATAR_OPTS, ...(rec.opts && rec.opts.v === 3 ? rec.opts : {}) };
       this.lid = rec.lidColor || FC.imageProcess.sampleLidColor(img, this.pts);
       this.lidInput.value = this.lid;
       this.modal.classList.add('show');

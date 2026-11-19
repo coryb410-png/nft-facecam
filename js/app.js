@@ -16,11 +16,12 @@
   };
 
   // Per-avatar options. v2 = head-only + auto-fit on for every avatar.
-  FC.AVATAR_OPTS = { v: 2, headOnly: true, fit: true, crop: 1, chin: 0.8, eyes: true, mouth: true };
+  FC.AVATAR_OPTS = { v: 3, headOnly: true, fit: true, crop: 1, chin: 0.8, eyes: true, mouth: true };
   function avatarOpts(rec) {
-    if (!rec.opts || rec.opts.v !== 2) {
+    if (!rec.opts || rec.opts.v !== 3) {
       const old = rec.opts || {};
-      rec.opts = { ...FC.AVATAR_OPTS, eyes: old.eyes !== false, mouth: old.mouth !== false };
+      rec.opts = { ...FC.AVATAR_OPTS, eyes: old.eyes !== false, mouth: old.mouth !== false, chin: old.chin ?? FC.AVATAR_OPTS.chin, crop: old.crop ?? 1 };
+      rec.removeBg = null; // re-run the (new) automatic background removal
       rec._migrated = true;
     }
     return rec.opts;
@@ -89,7 +90,7 @@
     }
 
     prepare(rec, c) {
-      const p = FC.imageProcess.prepare(c.img, rec.removeBg);
+      const p = FC.imageProcess.prepare(c.img, rec.removeBg, rec.points);
       c.prepared = p.canvas; c.bgDetected = p.bgDetected; c.removeBg = p.removeBg; c.risky = p.risky; c.hasAlpha = p.hasAlpha;
       return c;
     }
@@ -107,6 +108,7 @@
           this.mode = '3d';
           if (!info.morphCount) toast('3D model loaded. It has no facial blendshapes, so it will follow your head but not blink or talk.', 'info', 6000);
         } else {
+          avatarOpts(rec);
           this.prepare(rec, c);
           if (!rec.points) rec.points = FC.imageProcess.defaultPoints(c.prepared.width, c.prepared.height);
           if (!rec.lidColor) rec.lidColor = FC.imageProcess.sampleLidColor(c.prepared, rec.points);
@@ -189,7 +191,12 @@
 
     onPointsSaved(rec, silent) {
       this.persist(rec);
-      if (this.current && this.current.id === rec.id && this.mode === '2d') { this.av2.setPoints(rec.points, rec.lidColor); this.applyHead(rec); }
+      if (this.current && this.current.id === rec.id && this.mode === '2d') {
+        const c = this.cache[rec.id];
+        if (c && c.img && c.bgDetected) { this.prepare(rec, c); this.av2.setAvatar(c.prepared, rec.points, rec.lidColor); }
+        else this.av2.setPoints(rec.points, rec.lidColor);
+        this.applyHead(rec);
+      }
       if (!silent) toast('Face points saved', 'ok');
     }
 
@@ -269,8 +276,25 @@
         toast("Face tracking couldn't load. An internet connection is needed the first time. (" + e.message + ')', 'error', 9000);
       }
       if (this.settings.bg !== 'none' || this.settings.hideBody) this.bg.ensure();
-      this.solver.reset();
+      this.startScan();
       this.clock.start();
+    }
+
+    // "Read my face first": blur the camera, learn the face for ~1s, then reveal the NFT.
+    startScan() {
+      this.solver.reset();
+      this.scanning = true; this.scanCount = 0; this.revealAt = 0;
+      const el = $('scan'); el.classList.remove('done', 'locked'); el.classList.add('show');
+      $('scanText').textContent = 'Reading your face…';
+      $('scanRing').style.strokeDashoffset = 119.4;
+    }
+    finishScan(ts) {
+      this.scanning = false; this.revealAt = ts;
+      const el = $('scan'); el.classList.add('locked');
+      $('scanText').textContent = 'Got it! ✨';
+      $('scanRing').style.strokeDashoffset = 0;
+      setTimeout(() => el.classList.add('done'), 250);
+      setTimeout(() => el.classList.remove('show', 'done', 'locked'), 800);
     }
 
     stopCamera(silent) {
@@ -278,6 +302,7 @@
       this.clock.stop();
       if (this.stream) this.stream.getTracks().forEach(t => t.stop());
       this.stream = null; this.video.srcObject = null;
+      this.scanning = false; $('scan').classList.remove('show');
       if (!silent) { this.setLive(false); this.outCtx.clearRect(0, 0, this.out.width, this.out.height); }
     }
 
@@ -334,12 +359,21 @@
       const ts = performance.now();
       const ctx = this.outCtx;
       ctx.clearRect(0, 0, W, H);
-      this.bg.compose(ctx, v, W, H, { mode: s.bg, hideBody: s.hideBody, mirror: s.mirror }, ts);
+      if (this.scanning) this.bg.drawVideo(ctx, v, W, H, s.mirror, `blur(${Math.round(W / 40)}px)`);
+      else this.bg.compose(ctx, v, W, H, { mode: s.bg, hideBody: s.hideBody, mirror: s.mirror }, ts);
 
       let det = null;
       if (this.tracker.video) { try { det = this.tracker.detect(v, ts); } catch (e) { console.warn(e); } }
       const pose = det ? this.solver.update(det, { W, H, mirror: s.mirror, smoothing: s.smoothing, exprGain: s.exprGain, straighten: s.straighten, motion: s.motion }, ts) : this.solver.lost(ts, s.holdOnLost);
-      $('trackStatus').classList.toggle('hidden', !!det || !this.tracker.video);
+      $('trackStatus').classList.toggle('hidden', !!det || !this.tracker.video || this.scanning);
+      if (this.scanning) {
+        if (det) this.scanCount++; else this.scanCount = Math.max(0, this.scanCount - 2);
+        const need = 30;
+        $('scanText').textContent = det ? 'Reading your face…' : 'Looking for your face…';
+        $('scanRing').style.strokeDashoffset = 119.4 * (1 - Math.min(1, this.scanCount / need));
+        if (this.scanCount >= need) this.finishScan(ts);
+        return; // NFT appears after the scan
+      }
 
       if (pose && pose.visible > 0) {
         const r = this.mode === '3d' ? this.av3 : this.av2;
@@ -348,11 +382,14 @@
           const expr = { ...pose.expr };
           if (o.eyes === false) { expr.blinkL = expr.blinkR = expr.gazeX = expr.gazeY = 0; }
           if (o.mouth === false) { expr.jaw = expr.smileL = expr.smileR = expr.pucker = 0; }
+          // pop-in after the scan
+          const k = this.revealAt ? Math.min(1, (ts - this.revealAt) / 450) : 1;
+          const pop = k < 1 ? 0.75 + 0.25 * (1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2)) : 1;
           r.render({
-            W, H, anchor: pose.anchor, R: pose.R, faceSize: pose.scale, opacity: pose.visible, expr,
+            W, H, anchor: pose.anchor, R: pose.R, faceSize: pose.scale, opacity: pose.visible * k, expr,
             headOnly: !!o.headOnly, fit: !!o.fit, crop: o.crop, face: pose.face,
             blendshapes: pose.blendshapes3d, exprGain: s.exprGain,
-            size: s.size, offX: s.offX, offY: s.offY, roll: s.roll, depth: s.depth, oval: s.oval
+            size: s.size * pop, offX: s.offX, offY: s.offY, roll: s.roll, depth: s.depth, oval: s.oval
           });
           ctx.drawImage(r.canvas, 0, 0);
         }
@@ -376,9 +413,7 @@
       $('pointsBtn').style.display = r.kind === 'image' ? '' : 'none';
       const rb = $('removeBgRow');
       rb.style.display = r.kind === 'image' && c.bgDetected ? '' : 'none';
-      rb.querySelector('small').textContent = c.risky
-        ? 'Off by default — your NFT uses its background colour, so cutting it out could leave holes'
-        : 'Cuts out solid-colour backgrounds (artwork untouched)';
+      rb.querySelector('small').textContent = 'Cuts out the NFT’s background so only the character shows (artwork untouched)';
       $('removeBg').checked = !!c.removeBg;
       $('heroAvatar').src = r.kind === 'image' ? c.url : this.cache['demo-neon-cat'] ? this.cache['demo-neon-cat'].url : '';
       $('modeChip').innerHTML = `<span class="pill">${r.kind === 'model' ? '3D Avatar mode' : '2D NFT mode'}</span>`;
@@ -444,6 +479,7 @@
       for (const k of ADJ_KEYS) $(k).oninput = (e) => { s[k] = +e.target.value; $('o-' + k).textContent = FMT[k](s[k]); this.save(); };
       $('oval').onchange = (e) => { s.oval = e.target.checked; this.save(); };
       $('straighten').onchange = (e) => { s.straighten = e.target.checked; this.save(); this.solver.reset(); };
+      $('rescanBtn').onclick = () => { if (!this.stream) { toast('Start your camera first'); return; } this.closeSheet(); this.startScan(); };
       $('holdOnLost').onchange = (e) => { s.holdOnLost = e.target.checked; this.save(); };
       $('resetAdj').onclick = () => { for (const k of [...ADJ_KEYS, 'oval', 'straighten']) s[k] = DEFAULTS[k]; this.solver.reset(); this.save(); this.syncControls(); };
 

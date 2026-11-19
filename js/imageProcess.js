@@ -88,17 +88,90 @@
     ctx.putImageData(im, 0, 0);
   }
 
-  function prepare(img, removeBgPref) {
+  function prepare(img, removeBgPref, pts) {
     const canvas = toCanvas(img);
-    const bg = detectSolidBackground(canvas);
-    const risky = bg ? bgIsRisky(canvas, bg) : false;
-    const auto = removeBgPref === null || removeBgPref === undefined;
-    const removeBg = auto ? (!!bg && !risky) : removeBgPref;
-    if (removeBg && bg) removeBackground(canvas, bg);
-    const hasAlpha = alphaFraction(canvas) > 0.03;
-    if (hasAlpha) smoothEdges(canvas);
-    return { canvas, bgDetected: !!bg, removeBg: removeBg && !!bg, risky, hasAlpha };
+    // already a transparent PNG? just clean the edges
+    if (alphaFraction(canvas) > 0.03) { smoothEdges(canvas); return { canvas, bgDetected: false, removeBg: false, hasAlpha: true }; }
+    const bgM = borderColour(canvas);
+    if (!bgM || removeBgPref === false) return { canvas, bgDetected: !!bgM, removeBg: false, hasAlpha: false };
+    const before = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height);
+    const frac = smartRemove(canvas, bgM, pts || defaultPoints(canvas.width, canvas.height));
+    if (frac < 0.03 || frac > 0.9) { // nothing sensible removed -> keep original
+      canvas.getContext('2d').putImageData(before, 0, 0);
+      return { canvas, bgDetected: true, removeBg: false, hasAlpha: false };
+    }
+    smoothEdges(canvas);
+    return { canvas, bgDetected: true, removeBg: true, hasAlpha: true };
   }
+
+  // median colour around the image border (null if the border is busy / not a backdrop)
+  function borderColour(canvas) {
+    const { width: w, height: h } = canvas;
+    const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+    const cols = [];
+    const step = Math.max(1, Math.floor(Math.min(w, h) / 60));
+    for (let x = 0; x < w; x += step) cols.push(x * 4, ((h - 1) * w + x) * 4);
+    for (let y = 0; y < h; y += step) cols.push((y * w) * 4, (y * w + w - 1) * 4);
+    const px = cols.map(i => [d[i], d[i + 1], d[i + 2]]);
+    const med = [0, 1, 2].map(k => px.map(c => c[k]).sort((a, b) => a - b)[px.length >> 1]);
+    const near = px.filter(c => Math.max(Math.abs(c[0] - med[0]), Math.abs(c[1] - med[1]), Math.abs(c[2] - med[2])) < 70).length;
+    if (near / px.length <= 0.55) return null;
+    // how much the backdrop varies (flat colour vs gradient / texture)
+    const dev = px.map(c => Math.max(Math.abs(c[0] - med[0]), Math.abs(c[1] - med[1]), Math.abs(c[2] - med[2]))).sort((a, b) => a - b);
+    med.noise = dev[Math.floor(dev.length * 0.75)];
+    return med;
+  }
+
+  /* Smart background removal: grows from the image edges through pixels that are
+   * similar to their neighbour (handles gradients & shading), never entering a protected
+   * zone around the character's face. Returns the fraction of the image removed. */
+  function smartRemove(canvas, bgM, pts) {
+    const { width: w, height: h } = canvas;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const im = ctx.getImageData(0, 0, w, h); const d = im.data;
+    const N = w * h, state = new Uint8Array(N); // 0 unseen, 1 kept, 2 removed
+    const dist = (i, j) => Math.max(Math.abs(d[i] - d[j]), Math.abs(d[i + 1] - d[j + 1]), Math.abs(d[i + 2] - d[j + 2]));
+    const distBg = (i) => Math.max(Math.abs(d[i] - bgM[0]), Math.abs(d[i + 1] - bgM[1]), Math.abs(d[i + 2] - bgM[2]));
+    // protected face core
+    const eL = [pts.eL[0] * w, pts.eL[1] * h], eR = [pts.eR[0] * w, pts.eR[1] * h], m = [pts.m[0] * w, pts.m[1] * h];
+    const ex = (eL[0] + eR[0]) / 2, ey = (eL[1] + eR[1]) / 2;
+    const ed = Math.hypot(eR[0] - eL[0], eR[1] - eL[1]), em = Math.max(4, Math.hypot(m[0] - ex, m[1] - ey));
+    const pcx = ex + (m[0] - ex) * 0.35, pcy = ey + (m[1] - ey) * 0.35;
+    const prx = Math.max(ed * 1.0, em * 1.1), pry = em * 1.55;
+    const prot = (p) => { const x = p % w, y = (p / w) | 0; const a = (x - pcx) / prx, b = (y - pcy) / pry; return a * a + b * b < 1; };
+    const noise = bgM.noise || 0;
+    const STEP = Math.min(16, 6 + noise * 1.5);                  // neighbour-to-neighbour change allowed
+    const GLOBAL = Math.max(24, Math.min(100, noise * 2.5 + 20)); // how far from the backdrop colour
+    const stack = new Int32Array(N); let sp = 0;
+    const seed = (p) => { if (!state[p] && !prot(p) && distBg(p * 4) < GLOBAL) { state[p] = 2; stack[sp++] = p; } };
+    for (let x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
+    for (let y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }
+    let removed = 0;
+    while (sp) {
+      const p = stack[--sp]; removed++;
+      const x = p % w;
+      const nb = [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w];
+      for (const q of nb) {
+        if (q < 0 || q >= N || state[q]) continue;
+        if (prot(q) || dist(p * 4, q * 4) >= STEP || distBg(q * 4) >= GLOBAL) continue;
+        state[q] = 2; stack[sp++] = q;
+      }
+    }
+    for (let p = 0; p < N; p++) if (state[p] === 2) d[p * 4 + 3] = 0;
+    // soft matte on the outline: fade edge pixels that are close to the removed colour
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x;
+      if (state[p] === 2) continue;
+      let q = -1;
+      if (state[p - 1] === 2) q = p - 1; else if (state[p + 1] === 2) q = p + 1; else if (state[p - w] === 2) q = p - w; else if (state[p + w] === 2) q = p + w;
+      if (q < 0) continue;
+      const k = Math.min(1, dist(p * 4, q * 4) / (STEP * 3));
+      d[p * 4 + 3] = Math.round(d[p * 4 + 3] * Math.max(0.25, k));
+    }
+    ctx.putImageData(im, 0, 0);
+    return removed / N;
+  }
+
 
   function alphaFraction(canvas) {
     const { width: w, height: h } = canvas;
