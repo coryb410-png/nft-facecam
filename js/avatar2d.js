@@ -265,7 +265,7 @@ void main(){
       }
       const ox = (s.offX || 0) * unit * 0.5, oy = (s.offY || 0) * unit * 0.5;
       const off = [R[0] * ox + R[3] * oy, R[1] * ox + R[4] * oy];
-      const D = s.H / 2 / Math.tan(17.5 * Math.PI / 180);
+      const D = s.H / 2 / Math.tan(10 * Math.PI / 180); // narrow lens = less stretching
 
       gl.useProgram(this.prog);
       gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);

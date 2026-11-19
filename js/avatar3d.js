@@ -94,8 +94,8 @@
       const T = this.THREE;
       this.renderer.clear();
       if (!this.ready || !s.opacity) return;
-      const D = s.H / 2 / Math.tan(17.5 * Math.PI / 180);
-      this.camera.aspect = s.W / s.H; this.camera.fov = 35; this.camera.position.set(0, 0, D);
+      const D = s.H / 2 / Math.tan(10 * Math.PI / 180); // narrow lens = less stretching
+      this.camera.aspect = s.W / s.H; this.camera.fov = 20; this.camera.position.set(0, 0, D);
       this.camera.near = 1; this.camera.far = D * 10; this.camera.updateProjectionMatrix();
 
       const Rm = FC.Avatar2D.mul3(s.R, FC.Avatar2D.rotZ((s.roll || 0) * Math.PI / 180));

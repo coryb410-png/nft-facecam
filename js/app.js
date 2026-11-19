@@ -5,14 +5,14 @@
   const IS_MOBILE = document.documentElement.classList.contains('mobile');
 
   const DEFAULTS = {
-    size: 1, offX: 0, offY: 0, roll: 0, smoothing: 0.5, exprGain: 1, depth: 0.35, oval: false,
+    size: 1, offX: 0, offY: 0, roll: 0, smoothing: 0.65, exprGain: 1, depth: 0.22, oval: false, straighten: true, motion: 0.6, v: 2,
     mirror: true, bg: 'none', hideBody: false, res: IS_MOBILE ? '640x480' : '1280x720', facing: 'user', recAudio: true, cameraId: '', avatarId: 'demo-neon-cat',
     showFps: false, holdOnLost: true, builtinOverrides: {}
   };
-  const ADJ_KEYS = ['size', 'offX', 'offY', 'roll', 'smoothing', 'exprGain', 'depth'];
+  const ADJ_KEYS = ['size', 'offX', 'offY', 'roll', 'smoothing', 'exprGain', 'depth', 'motion'];
   const FMT = {
     size: v => Math.round(v * 100) + '%', offX: v => (v > 0 ? '+' : '') + Math.round(v * 100), offY: v => (v > 0 ? '+' : '') + Math.round(v * 100),
-    roll: v => (v > 0 ? '+' : '') + v + '°', smoothing: v => Math.round(v * 100) + '%', exprGain: v => Math.round(v * 100) + '%', depth: v => Math.round(v * 100) + '%'
+    roll: v => (v > 0 ? '+' : '') + v + '°', smoothing: v => Math.round(v * 100) + '%', motion: v => Math.round(v * 100) + '%', exprGain: v => Math.round(v * 100) + '%', depth: v => Math.round(v * 100) + '%'
   };
 
   // Per-avatar options. v2 = head-only + auto-fit on for every avatar.
@@ -29,6 +29,9 @@
   class App {
     constructor() {
       this.settings = FC.storage.settings.load(DEFAULTS);
+      if (this.settings.v !== 2) { // upgrade older saved settings to the smoother, head-on defaults
+        Object.assign(this.settings, { v: 2, smoothing: 0.65, depth: 0.22, straighten: true, motion: 0.6 });
+      }
       this.tracker = new FC.Tracker();
       this.trackerP = null;
       this.solver = new FC.PoseSolver();
@@ -335,7 +338,7 @@
 
       let det = null;
       if (this.tracker.video) { try { det = this.tracker.detect(v, ts); } catch (e) { console.warn(e); } }
-      const pose = det ? this.solver.update(det, { W, H, mirror: s.mirror, smoothing: s.smoothing, exprGain: s.exprGain }, ts) : this.solver.lost(ts, s.holdOnLost);
+      const pose = det ? this.solver.update(det, { W, H, mirror: s.mirror, smoothing: s.smoothing, exprGain: s.exprGain, straighten: s.straighten, motion: s.motion }, ts) : this.solver.lost(ts, s.holdOnLost);
       $('trackStatus').classList.toggle('hidden', !!det || !this.tracker.video);
 
       if (pose && pose.visible > 0) {
@@ -407,7 +410,7 @@
     syncControls() {
       const s = this.settings;
       for (const k of ADJ_KEYS) { $(k).value = s[k]; $('o-' + k).textContent = FMT[k](+s[k]); }
-      $('oval').checked = s.oval; $('holdOnLost').checked = s.holdOnLost; $('mirror').checked = s.mirror; $('hideBody').checked = s.hideBody;
+      $('oval').checked = s.oval; $('straighten').checked = s.straighten; $('holdOnLost').checked = s.holdOnLost; $('mirror').checked = s.mirror; $('hideBody').checked = s.hideBody;
       $('mirrorBtn').classList.toggle('on', s.mirror);
       $('resSelect').value = s.res;
       document.querySelectorAll('#bgSeg button').forEach(b => b.classList.toggle('active', b.dataset.bg === s.bg));
@@ -440,8 +443,9 @@
 
       for (const k of ADJ_KEYS) $(k).oninput = (e) => { s[k] = +e.target.value; $('o-' + k).textContent = FMT[k](s[k]); this.save(); };
       $('oval').onchange = (e) => { s.oval = e.target.checked; this.save(); };
+      $('straighten').onchange = (e) => { s.straighten = e.target.checked; this.save(); this.solver.reset(); };
       $('holdOnLost').onchange = (e) => { s.holdOnLost = e.target.checked; this.save(); };
-      $('resetAdj').onclick = () => { for (const k of [...ADJ_KEYS, 'oval']) s[k] = DEFAULTS[k]; this.save(); this.syncControls(); };
+      $('resetAdj').onclick = () => { for (const k of [...ADJ_KEYS, 'oval', 'straighten']) s[k] = DEFAULTS[k]; this.solver.reset(); this.save(); this.syncControls(); };
 
       document.querySelectorAll('#bgSeg button').forEach(b => b.onclick = () => {
         s.bg = b.dataset.bg; this.save(); this.syncControls();
