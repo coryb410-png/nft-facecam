@@ -50,16 +50,32 @@
     <div class="stage" id="stage">
       <canvas id="out" width="1280" height="720"></canvas>
       <div class="stage-empty" id="empty">
-        <img class="hero-avatar" id="heroAvatar" alt="">
-        <h1 id="heroTitle">Become your NFT on camera</h1>
-        <div class="steps">
-          <span class="step"><b>1</b>Pick or upload your NFT</span>
-          <span class="step"><b>2</b>Start your camera</span>
-          <span class="step"><b>3</b>You're the NFT ✨</span>
+        <div class="hero">
+          <div class="hero-visual">
+            <div class="hero-glow"></div>
+            <div class="hero-ring"></div>
+            <img class="hero-avatar" id="heroAvatar" alt="">
+          </div>
+          <div class="hero-copy">
+            <span class="eyebrow">Live NFT camera</span>
+            <h1 id="heroTitle">Become your NFT</h1>
+            <p class="lede">Your NFT takes the place of your face in real time. It turns, blinks and talks with you.</p>
+          </div>
+          <div class="picker">
+            <div class="picker-head"><span class="step-n">1</span><b>Choose your NFT</b><span class="picker-name" id="pickerName"></span></div>
+            <div class="picker-row" id="pickerRow"></div>
+          </div>
+          <button class="cta" id="startBig">
+            <span class="step-n light">2</span>
+            <span class="cta-text"><b>Scan my face</b><small>Then your NFT appears</small></span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="9.5" cy="10.5" r=".8" fill="currentColor"/><circle cx="14.5" cy="10.5" r=".8" fill="currentColor"/><path d="M9.5 15c1.4 1 3.6 1 5 0"/></svg>
+          </button>
+          <div class="trust">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Processed on your device</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>Nothing uploaded</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>No account</span>
+          </div>
         </div>
-        <button class="btn primary big" id="startBig">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 10l5-3v10l-5-3z"/><rect x="3" y="6" width="12" height="12" rx="2"/></svg>Start camera</button>
-        <p class="note">Your camera is processed locally on this device. Nothing is uploaded, saved or recorded. You can stop the camera at any time.</p>
       </div>
       <div class="overlay-chip" id="modeChip"></div>
       <div class="track-status hidden" id="trackStatus">Looking for your face…</div>
@@ -68,7 +84,7 @@
         <div class="scan-oval"><div class="scan-line"></div></div>
         <div class="scan-info">
           <svg class="scan-ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" class="bg"/><circle cx="22" cy="22" r="19" class="fg" id="scanRing"/></svg>
-          <div><b id="scanText">Reading your face…</b><small>Look at the camera and hold still</small></div>
+          <img class="scan-nft" id="scanAvatar" alt=""><div><b id="scanText">Reading your face…</b><small id="scanSub">Look at the camera and hold still</small></div>
         </div>
       </div>
       <div class="rec-badge" id="recBadge"><span class="dot"></span><span id="recTime">0:00</span></div>

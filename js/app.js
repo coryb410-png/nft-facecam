@@ -110,6 +110,7 @@
         } else {
           avatarOpts(rec);
           this.prepare(rec, c);
+          this.makeCleanUrl(rec, c);
           if (!rec.points) rec.points = FC.imageProcess.defaultPoints(c.prepared.width, c.prepared.height);
           if (!rec.lidColor) rec.lidColor = FC.imageProcess.sampleLidColor(c.prepared, rec.points);
           this.av2.setAvatar(c.prepared, rec.points, rec.lidColor);
@@ -121,11 +122,35 @@
         this.current = rec;
         this.settings.avatarId = id; this.save();
         this.renderCurrent(); this.renderCollection();
+        if (this.stream && !opts.noScan) this.startScan(); // read the face again, then add the new NFT
         if (rec.kind === 'image' && !rec.builtin && !rec.pointsSet && !rec.promptedPoints && !opts.skipPrompt) this.promptPoints(rec);
       } catch (e) {
         console.error(e);
         toast(rec.kind === 'model' ? '3D avatars need an internet connection the first time, and a valid .glb file: ' + e.message : e.message, 'error', 6000);
       } finally { this.setLoading(null); }
+    }
+
+    // a cut-out (background removed) preview of the NFT for the start screen
+    makeCleanUrl(rec, c) {
+      if (rec.builtin || !c.prepared || !c.hasAlpha) { c.cleanUrl = c.url; return; }
+      c.prepared.toBlob(b => {
+        if (!b) return;
+        if (c.cleanUrl && c.cleanUrl !== c.url) URL.revokeObjectURL(c.cleanUrl);
+        c.cleanUrl = URL.createObjectURL(b);
+        if (this.current && this.current.id === rec.id) this.renderCurrent();
+        this.renderPicker();
+      }, 'image/png');
+    }
+
+    renderPicker() {
+      const row = $('pickerRow'); if (!row) return;
+      const tiles = this.records.map(r => {
+        const c = this.cache[r.id];
+        const inner = r.kind === 'model' ? '<span class="glb">3D</span>' : c ? `<img src="${c.cleanUrl || c.url}" alt="">` : '';
+        return `<button class="pick ${this.current && this.current.id === r.id ? 'selected' : ''}" data-id="${r.id}" title="${escapeHtml(r.name)}">${inner}</button>`;
+      });
+      row.innerHTML = `<button class="pick add" id="pickAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Upload</button>` + tiles.join('');
+      if (this.current) $('pickerName').textContent = this.current.name;
     }
 
     async addFile(file) {
@@ -286,6 +311,7 @@
       this.scanning = true; this.scanCount = 0; this.revealAt = 0;
       const el = $('scan'); el.classList.remove('done', 'locked'); el.classList.add('show');
       $('scanText').textContent = 'Reading your face…';
+      $('scanSub').textContent = `Look at the camera — ${this.current ? this.current.name : 'your NFT'} is next`;
       $('scanRing').style.strokeDashoffset = 119.4;
     }
     finishScan(ts) {
@@ -335,6 +361,7 @@
     setLive(on) {
       const p = $('camStatus');
       p.classList.toggle('live', on);
+      document.body.classList.toggle('live', on);
       p.lastElementChild.textContent = on ? 'Camera on · live' : 'Camera off';
       $('empty').style.display = on ? 'none' : '';
       $('out').style.visibility = on ? 'visible' : 'hidden';
@@ -405,7 +432,7 @@
     /* ---------------- UI ---------------- */
     renderCurrent() {
       const r = this.current, c = this.cache[r.id];
-      const thumb = r.kind === 'model' ? `<div class="glb">3D</div>` : `<img src="${c.url}" alt="">`;
+      const thumb = r.kind === "model" ? `<div class="glb">3D</div>` : `<img src="${c.cleanUrl || c.url}" alt="">`;
       const sub = r.kind === 'model'
         ? `3D avatar · ${r.info && r.info.morphCount ? r.info.morphCount + ' facial shapes' : 'head tracking'}`
         : '2D NFT · animated face';
@@ -415,7 +442,9 @@
       rb.style.display = r.kind === 'image' && c.bgDetected ? '' : 'none';
       rb.querySelector('small').textContent = 'Cuts out the NFT’s background so only the character shows (artwork untouched)';
       $('removeBg').checked = !!c.removeBg;
-      $('heroAvatar').src = r.kind === 'image' ? c.url : this.cache['demo-neon-cat'] ? this.cache['demo-neon-cat'].url : '';
+      const img = r.kind === 'image' ? (c.cleanUrl || c.url) : this.cache['demo-neon-cat'] ? this.cache['demo-neon-cat'].url : '';
+      $('heroAvatar').src = img; $('scanAvatar').src = img;
+      $('pickerName').textContent = r.name;
       $('modeChip').innerHTML = `<span class="pill">${r.kind === 'model' ? '3D Avatar mode' : '2D NFT mode'}</span>`;
     }
 
@@ -429,6 +458,7 @@
         tiles.push(`<button class="tile ${this.current && this.current.id === r.id ? 'selected' : ''}" data-id="${r.id}" title="${escapeHtml(r.name)}">${inner}<span class="tag">${r.kind === 'model' ? '3D' : r.builtin ? 'Demo' : '2D'}</span>${r.builtin ? '' : `<span class="del" data-del="${r.id}" title="Remove">✕</span>`}</button>`);
       }
       host.innerHTML = tiles.join('');
+      this.renderPicker();
     }
 
     renderObsSteps() {
@@ -505,6 +535,10 @@
       // allow dropping a file anywhere on the stage too
       $('stage').addEventListener('dragover', (e) => e.preventDefault());
       $('stage').addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) this.addFile(f); });
+      $('pickerRow').onclick = (e) => {
+        if (e.target.closest('#pickAdd')) { $('fileInput').click(); return; }
+        const t = e.target.closest('.pick'); if (t) this.selectAvatar(t.dataset.id);
+      };
       $('urlBtn').onclick = () => this.importUrl($('urlInput').value);
       $('urlInput').onkeydown = (e) => { if (e.key === 'Enter') this.importUrl(e.target.value); };
       $('collection').onclick = (e) => {

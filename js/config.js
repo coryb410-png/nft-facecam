@@ -7,7 +7,7 @@ window.FC = window.FC || {};
 
 FC.config = {
   APP_NAME: 'NFT FaceCam',
-  TAGLINE: 'Become your NFT on camera',
+  TAGLINE: 'Become your NFT',
 
   // Libraries (loaded on demand from public CDNs)
   MEDIAPIPE_VERSION: '0.10.14',
