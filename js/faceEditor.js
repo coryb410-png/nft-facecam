@@ -64,6 +64,7 @@
       $('edFit').onchange = (e) => { this.opts.fit = e.target.checked; };
       $('edEyes').onchange = (e) => { this.opts.eyes = e.target.checked; };
       $('edMouth').onchange = (e) => { this.opts.mouth = e.target.checked; };
+      $('edTeeth').onchange = (e) => { this.opts.teeth = e.target.checked; };
       this.modal.addEventListener('pointerdown', (e) => { if (e.target === this.modal) this.close(); });
     }
 
@@ -79,6 +80,7 @@
       this.updateHead();
       $('edEyes').checked = this.opts.eyes !== false;
       $('edMouth').checked = this.opts.mouth !== false;
+      $('edTeeth').checked = this.opts.teeth !== false;
       this.draw();
     }
 
@@ -240,7 +242,7 @@
           W, H, R, opacity: 1, size: 1, depth: this.app.settings.depth,
           anchor: [W / 2, H / 2], faceSize: g.sN * k,
           headOnly: o.headOnly, crop: o.crop, fit: o.headOnly, face: { cx: W / 2, cy: H / 2 + 20, w: 150, h: 175 },
-          expr: { blinkL: blink, blinkR: blink, jaw: talk, smileL: 0.2, smileR: 0.2, gazeX: o.eyes === false ? 0 : Math.sin(t * 0.7) * 0.6 }
+          expr: { blinkL: blink, blinkR: blink, jaw: talk, teethU: o.teeth === false ? 0 : 0.9, teethL: o.teeth === false ? 0 : 0.6, tongue: o.teeth === false ? 0 : talk * 0.8, smileL: 0.2, smileR: 0.2, gazeX: o.eyes === false ? 0 : Math.sin(t * 0.7) * 0.6 }
         });
         this.anim = requestAnimationFrame(tick);
       };

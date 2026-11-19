@@ -1,9 +1,9 @@
 /* NFT FaceCam service worker: lets the installed app open fast and keeps the
  * face-tracking engine cached after the first download. Camera video is never
  * touched here — it only caches the app's own files and public libraries. */
-const VERSION = 'facecam-v8';
+const VERSION = 'facecam-v9';
 const APP = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon-192.png',
-  'js/config.js', 'js/util.js', 'js/storage.js', 'js/demoAvatars.js', 'js/imageProcess.js', 'js/tracker.js', 'js/pose.js',
+  'js/config.js', 'js/util.js', 'js/storage.js', 'js/demoAvatars.js', 'js/imageProcess.js', 'js/tracker.js', 'js/pose.js', 'js/mouthReader.js',
   'js/avatar2d.js', 'js/avatar3d.js', 'js/background.js', 'js/output.js', 'js/wallet.js', 'js/faceEditor.js', 'js/recorder.js', 'js/app.js'];
 const CDN = /^(https:\/\/(cdn\.jsdelivr\.net|storage\.googleapis\.com|fonts\.googleapis\.com|fonts\.gstatic\.com))\//;
 

@@ -16,7 +16,7 @@
   };
 
   // Per-avatar options. v2 = head-only + auto-fit on for every avatar.
-  FC.AVATAR_OPTS = { v: 3, headOnly: true, fit: true, crop: 1, chin: 0.8, eyes: true, mouth: true };
+  FC.AVATAR_OPTS = { v: 3, headOnly: true, fit: true, crop: 1, chin: 0.8, eyes: true, mouth: true, teeth: true };
   function avatarOpts(rec) {
     if (!rec.opts || rec.opts.v !== 3) {
       const old = rec.opts || {};
@@ -51,6 +51,7 @@
       this.fpsT = performance.now(); this.fpsN = 0;
       this.editor = new FC.FaceEditor(this);
       this.recorder = new FC.Recorder(this.out);
+      this.mouth = new FC.MouthReader();
     }
 
     save() { FC.storage.settings.save(this.settings); }
@@ -407,8 +408,10 @@
         if (r && r.ready) {
           const o = this.current ? avatarOpts(this.current) : FC.AVATAR_OPTS;
           const expr = { ...pose.expr };
+          if (det && o.teeth !== false) { try { Object.assign(expr, this.mouth.read(det.landmarks, v)); } catch (e) { /* ignore */ } }
+          if (window.__forceExpr) Object.assign(expr, window.__forceExpr); // testing hook
           if (o.eyes === false) { expr.blinkL = expr.blinkR = expr.gazeX = expr.gazeY = 0; }
-          if (o.mouth === false) { expr.jaw = expr.smileL = expr.smileR = expr.pucker = 0; }
+          if (o.mouth === false) { expr.jaw = expr.smileL = expr.smileR = expr.pucker = expr.open = expr.teethU = expr.teethL = expr.tongue = 0; }
           // pop-in after the scan
           const k = this.revealAt ? Math.min(1, (ts - this.revealAt) / 450) : 1;
           const pop = k < 1 ? 0.75 + 0.25 * (1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2)) : 1;

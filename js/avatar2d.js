@@ -38,7 +38,8 @@ varying vec2 v_px;
 varying float v_shade;
 uniform sampler2D u_tex;
 uniform vec2 u_size, u_eL, u_eR, u_er, u_m, u_blink, u_smile, u_brow, u_gaze, u_headC, u_headR;
-uniform float u_mw, u_mh, u_jaw, u_pucker, u_opacity, u_oval, u_crop, u_cut, u_chin, u_fade;
+uniform float u_mw, u_mh, u_jaw, u_pucker, u_opacity, u_oval, u_crop, u_cut, u_chin, u_fade, u_tongue;
+uniform vec2 u_teeth;
 uniform vec4 u_box;
 uniform vec3 u_lid;
 
@@ -94,7 +95,7 @@ void main(){
   float mw = u_mw * (1. + 0.12 * (u_smile.x + u_smile.y) - 0.3 * u_pucker);
   float dx = (p.x - u_m.x) / (mw * 1.05);
   float shape = dx*dx < 1. ? pow(1. - dx*dx, 1.5) : 0.;
-  float gap = u_jaw * u_mh;
+  float gap = u_jaw * u_mh * (1. + 0.35 * u_tongue);
   float gUp = gap * 0.28 * shape, gDn = gap * 0.72 * shape;
   float rel = p.y - u_m.y;
   bool inGap = shape > 0.002 && gap > 0.5 && rel > -gUp && rel < gDn;
@@ -108,10 +109,42 @@ void main(){
   float a = c.a;
 
   if (inGap) {
-    float t = (rel + gUp) / max(gUp + gDn, 1e-3);
-    vec3 inner = mix(vec3(0.30, 0.05, 0.09), vec3(0.07, 0.01, 0.03), smoothstep(0., 0.55, t));
-    inner = mix(inner, vec3(0.78, 0.30, 0.36), smoothstep(0.62, 0.95, t) * 0.8);
-    float edge = min(rel + gUp, gDn - rel);
+    float H = gUp + gDn;                       // opening height here (px)
+    float yT = rel + gUp, yB = gDn - rel;      // distance from top lip / bottom lip
+    float t = yT / max(H, 1e-3);
+    // dark mouth cavity, darker towards the back and the corners
+    vec3 inner = mix(vec3(0.24, 0.04, 0.07), vec3(0.06, 0.01, 0.02), smoothstep(0., 0.6, t));
+    inner *= 0.65 + 0.35 * shape;
+    // teeth: white rows along the top / bottom lip with gaps between teeth
+    float tw = mw * 0.30;                                   // tooth width
+    float cx = (p.x - u_m.x) / tw;
+    float gapLine = smoothstep(0.03, 0.09, abs(fract(cx + 0.5) - 0.5));
+    float scal = pow(abs(fract(cx + 0.5) - 0.5) * 2., 2.);  // rounded tooth tips
+    vec3 toothCol = vec3(0.96, 0.94, 0.89);
+    if (u_teeth.y > 0.05) {                                 // bottom row (behind the tongue)
+      float hL = min(H * 0.24, mw * 0.24) * smoothstep(0.05, 0.35, u_teeth.y);
+      float tooth = 1. - smoothstep(hL - 1.2, hL + 0.6, yB - 0.2 * hL * scal);
+      vec3 c2 = toothCol * mix(0.95, 0.75, smoothstep(0., hL, yB)) * mix(0.7, 1., gapLine) * (0.7 + 0.3 * shape);
+      inner = mix(inner, c2, tooth);
+    }
+    // tongue: rounded, rises from the bottom of the mouth, grows with how much tongue shows
+    float tg = u_tongue;
+    if (tg > 0.04) {
+      float th = H * (0.35 + 0.45 * tg);
+      vec2 q = vec2((p.x - u_m.x) / (mw * (0.5 + 0.22 * tg)), (yB - th * 0.55) / (th * 0.62));
+      float tm = 1. - smoothstep(0.82, 1.0, length(q));
+      vec3 tc = mix(vec3(0.90, 0.42, 0.50), vec3(0.66, 0.20, 0.28), smoothstep(-0.7, 0.9, -q.y));
+      tc *= 1. - 0.22 * exp(-pow(q.x * 5., 2.)) * smoothstep(-0.3, 0.5, q.y);  // centre groove
+      tc += 0.12 * exp(-dot(q - vec2(-0.3, 0.4), q - vec2(-0.3, 0.4)) * 5.);   // highlight
+      inner = mix(inner, tc, tm * smoothstep(0.04, 0.2, tg));
+    }
+    if (u_teeth.x > 0.05) {                                 // top row (in front)
+      float hU = min(H * 0.30, mw * 0.30) * smoothstep(0.05, 0.35, u_teeth.x);
+      float tooth = 1. - smoothstep(hU - 1.2, hU + 0.6, yT - 0.2 * hU * scal);
+      vec3 c2 = toothCol * mix(1.0, 0.8, smoothstep(0., hU, yT)) * mix(0.7, 1., gapLine) * (0.7 + 0.3 * shape);
+      inner = mix(inner, c2, tooth);
+    }
+    float edge = min(yT, yB);
     float ia = smoothstep(0., 1.6, edge);
     col = mix(col, inner, ia);
     a = max(a, ia);
@@ -294,7 +327,9 @@ void main(){
       gl.uniform1f(L.u_mw, g.mw);
       gl.uniform1f(L.u_mh, g.mh);
       gl.uniform2f(L.u_blink, e.blinkL || 0, e.blinkR || 0);
-      gl.uniform1f(L.u_jaw, e.jaw || 0);
+      gl.uniform1f(L.u_jaw, Math.max(e.jaw || 0, e.open || 0));
+      gl.uniform2f(L.u_teeth, e.teethU || 0, e.teethL || 0);
+      gl.uniform1f(L.u_tongue, e.tongue || 0);
       gl.uniform2f(L.u_smile, e.smileL || 0, e.smileR || 0);
       gl.uniform1f(L.u_pucker, e.pucker || 0);
       gl.uniform2f(L.u_brow, e.browL || 0, e.browR || 0);
