@@ -36,34 +36,54 @@
     return close / cols.length > 0.72 ? med : null;
   }
 
-  // Flood-fill from the edges, clearing pixels close to the background colour.
-  function removeBackground(canvas, bg, tol = 48) {
+  const diff = (d, i, bg) => Math.max(Math.abs(d[i] - bg[0]), Math.abs(d[i + 1] - bg[1]), Math.abs(d[i + 2] - bg[2]));
+
+  // Is it safe to auto-remove? If the artwork itself uses lots of the background
+  // colour (e.g. a black shirt on a black background) the cut-out would eat into it.
+  function bgIsRisky(canvas, bg) {
+    const { width: w, height: h } = canvas;
+    const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+    let n = 0, near = 0;
+    const step = Math.max(1, Math.floor(Math.min(w, h) / 120));
+    for (let y = Math.floor(h * 0.2); y < h * 0.85; y += step) for (let x = Math.floor(w * 0.25); x < w * 0.75; x += step) {
+      const i = (y * w + x) * 4; n++;
+      if (diff(d, i, bg) < 40) near++;
+    }
+    return near / n > 0.05;
+  }
+
+  // Flood-fill from the edges, clearing only pixels very close to the background
+  // colour, then soften the cut edge so there is no jagged fringe.
+  function removeBackground(canvas, bg, tol = 26) {
     const { width: w, height: h } = canvas;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const im = ctx.getImageData(0, 0, w, h); const d = im.data;
     const seen = new Uint8Array(w * h);
     const stack = [];
-    const near = (p) => { const i = p * 4; return Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) < tol; };
     for (let x = 0; x < w; x++) { stack.push(x, (h - 1) * w + x); }
     for (let y = 0; y < h; y++) { stack.push(y * w, y * w + w - 1); }
     while (stack.length) {
       const p = stack.pop();
       if (seen[p]) continue; seen[p] = 1;
-      if (!near(p)) continue;
+      if (d[p * 4 + 3] > 8 && diff(d, p * 4, bg) >= tol) continue;
       seen[p] = 2;
       const x = p % w, y = (p / w) | 0;
       if (x > 0) stack.push(p - 1); if (x < w - 1) stack.push(p + 1);
       if (y > 0) stack.push(p - w); if (y < h - 1) stack.push(p + w);
     }
-    for (let p = 0; p < w * h; p++) {
-      if (seen[p] === 2) d[p * 4 + 3] = 0;
-    }
-    // soften the cut edge by one pixel
-    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
-      const p = y * w + x;
-      if (seen[p] === 2) continue;
-      const n = (seen[p - 1] === 2) + (seen[p + 1] === 2) + (seen[p - w] === 2) + (seen[p + w] === 2);
-      if (n) d[p * 4 + 3] = Math.min(d[p * 4 + 3], 255 - n * 45);
+    for (let p = 0; p < w * h; p++) if (seen[p] === 2) d[p * 4 + 3] = 0;
+    // soft matte on the 2-pixel border: fade pixels by how close they are to the bg colour
+    for (let pass = 0; pass < 2; pass++) {
+      const prev = pass === 0 ? 2 : 3;
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        const p = y * w + x;
+        if (seen[p] >= 2) continue;
+        if (seen[p - 1] === prev || seen[p + 1] === prev || seen[p - w] === prev || seen[p + w] === prev) {
+          seen[p] = pass + 3;
+          const k = Math.min(1, Math.max(0, (diff(d, p * 4, bg) - tol * 0.4) / (tol * 2.2)));
+          d[p * 4 + 3] = Math.round(d[p * 4 + 3] * (pass === 0 ? Math.max(0.15, k) : Math.max(0.6, k)));
+        }
+      }
     }
     ctx.putImageData(im, 0, 0);
   }
@@ -71,9 +91,22 @@
   function prepare(img, removeBgPref) {
     const canvas = toCanvas(img);
     const bg = detectSolidBackground(canvas);
-    const removeBg = removeBgPref === null || removeBgPref === undefined ? !!bg : removeBgPref;
+    const risky = bg ? bgIsRisky(canvas, bg) : false;
+    const auto = removeBgPref === null || removeBgPref === undefined;
+    const removeBg = auto ? (!!bg && !risky) : removeBgPref;
     if (removeBg && bg) removeBackground(canvas, bg);
-    return { canvas, bgDetected: !!bg, removeBg: removeBg && !!bg };
+    return { canvas, bgDetected: !!bg, removeBg: removeBg && !!bg, risky };
+  }
+
+  // Bounding box of the visible artwork (used to guess where a character's head is)
+  function contentBox(canvas) {
+    const { width: w, height: h } = canvas;
+    const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = 0, y1 = 0;
+    for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) {
+      if (d[(y * w + x) * 4 + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    return x1 > x0 ? { x0: x0 / w, y0: y0 / h, x1: x1 / w, y1: y1 / h } : { x0: 0, y0: 0, x1: 1, y1: 1 };
   }
 
   // Average colour just above an eye — used as the eyelid colour.
@@ -118,5 +151,5 @@
     return { eL: imgLeftEye, eR: imgRightEye, m: mouth, erx: ex * 0.62, ery: Math.max(ey * 0.75, ex * 0.35 * w / h), mw: mw * 1.05 };
   }
 
-  FC.imageProcess = { prepare, sampleLidColor, defaultPoints, pointsFromLandmarks, detectSolidBackground };
+  FC.imageProcess = { prepare, contentBox, sampleLidColor, defaultPoints, pointsFromLandmarks, detectSolidBackground };
 })();

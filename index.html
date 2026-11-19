@@ -186,17 +186,23 @@
 <!-- face point editor -->
 <div class="modal" id="editor">
   <div class="sheet">
-    <div class="row"><div style="flex:1"><h2>Set face points</h2><div class="muted">Drag the markers onto your NFT's eyes and mouth so blinking and talking line up. The artwork itself is never changed.</div></div>
+    <div class="row"><div style="flex:1"><h2>Set face points</h2><div class="muted">Show the app where your NFT's eyes and mouth are, so it sits on your face and blinks and talks in the right place. The artwork itself is never changed.</div></div>
       <button class="btn" id="edClose">Close</button></div>
     <div class="editor">
       <div>
+        <div class="ed-guide" id="edGuide"></div>
         <div class="editor-canvas-wrap"><canvas id="edCanvas"></canvas></div>
-        <div class="legend"><span><i style="background:#22f0d0"></i>Left eye</span><span><i style="background:#ff4fd8"></i>Right eye</span><span><i style="background:#ffd23f"></i>Mouth</span><span>Drag the small squares to resize</span></div>
+        <div class="legend"><span><i style="background:#22f0d0"></i>Left eye</span><span><i style="background:#ff4fd8"></i>Right eye</span><span><i style="background:#ffd23f"></i>Mouth</span><span>Drag dots to move · white squares to resize</span></div>
+        <button class="btn w100" id="edGuided">👆 Tap the points again</button>
       </div>
       <div>
         <canvas id="edPreview" width="400" height="400"></canvas>
         <p class="muted">Live preview (blinking and talking)</p>
         <div class="field"><label>Eyelid colour</label><div class="row"><input type="color" id="edLid" class="input" style="height:40px;padding:4px"><button class="btn" id="edLidAuto">Auto</button></div></div>
+        <label class="toggle"><div>Head only<small>Hide the body — great for full-body NFTs</small></div><span class="switch"><input type="checkbox" id="edHeadOnly"><span></span></span></label>
+        <div class="field" id="edCropRow"><label>Head crop size <output id="edCropOut"></output></label><input type="range" id="edCrop" min="0.7" max="3" step="0.01"></div>
+        <label class="toggle"><div>Animate eyes<small>Turn off for visors, glasses or masks</small></div><span class="switch"><input type="checkbox" id="edEyes"><span></span></span></label>
+        <label class="toggle"><div>Animate mouth<small>Turn off if the mouth is covered</small></div><span class="switch"><input type="checkbox" id="edMouth"><span></span></span></label>
         <button class="btn w100" id="edAuto">✨ Auto-detect face</button>
         <button class="btn w100 mt" id="edReset">Reset markers</button>
         <button class="btn primary w100 mt" id="edSave">Save</button>

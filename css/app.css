@@ -283,3 +283,8 @@ html.mobile #edPreview { width: 160px; margin: 0 auto; }
 html.mobile #toasts { left: 12px; right: 12px; top: calc(60px + env(safe-area-inset-top)); bottom: auto; align-items: center; }
 html.mobile .toast { max-width: 100%; transform: translateY(-10px); }
 html.mobile .toast.show { transform: none; }
+
+.ed-guide { display: none; margin-bottom: 10px; padding: 12px 14px; border-radius: 12px; font-weight: 700; font-size: 14.5px; background: linear-gradient(135deg, rgba(139, 92, 255, .35), rgba(255, 79, 216, .25)); border: 1px solid rgba(160, 140, 255, .5); }
+.ed-guide.show { display: block; animation: fade .25s; }
+.ed-guide i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: -1px; }
+#edGuided { margin-top: 4px; }

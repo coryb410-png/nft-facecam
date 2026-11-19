@@ -76,11 +76,11 @@
 
     prepare(rec, c) {
       const p = FC.imageProcess.prepare(c.img, rec.removeBg);
-      c.prepared = p.canvas; c.bgDetected = p.bgDetected; c.removeBg = p.removeBg;
+      c.prepared = p.canvas; c.bgDetected = p.bgDetected; c.removeBg = p.removeBg; c.risky = p.risky;
       return c;
     }
 
-    async selectAvatar(id) {
+    async selectAvatar(id, opts = {}) {
       const rec = this.rec(id);
       if (!rec) return;
       try {
@@ -102,6 +102,10 @@
         this.current = rec;
         this.settings.avatarId = id; this.save();
         this.renderCurrent(); this.renderCollection();
+        if (rec.kind === 'image' && !rec.builtin && !rec.pointsSet && !rec.promptedPoints && !opts.skipPrompt) {
+          if (!rec.opts) rec.opts = { headOnly: true, crop: 1.25, eyes: true, mouth: true };
+          this.promptPoints(rec);
+        }
       } catch (e) {
         console.error(e);
         toast(rec.kind === 'model' ? '3D avatars need an internet connection the first time, and a valid .glb file: ' + e.message : e.message, 'error', 6000);
@@ -111,7 +115,7 @@
     async addFile(file) {
       const isModel = /\.(glb|gltf)$/i.test(file.name) || /gltf/.test(file.type);
       if (!isModel && !/^image\//.test(file.type)) { toast('Please choose a PNG, JPG, WebP image or a .glb 3D model.', 'error'); return; }
-      const rec = { id: uid(), name: file.name.replace(/\.[^.]+$/, '').slice(0, 40) || 'My NFT', kind: isModel ? 'model' : 'image', blob: file, created: Date.now(), points: null, removeBg: null, lidColor: null };
+      const rec = { id: uid(), name: file.name.replace(/\.[^.]+$/, '').slice(0, 40) || 'My NFT', kind: isModel ? 'model' : 'image', blob: file, created: Date.now(), points: null, removeBg: null, lidColor: null, opts: { headOnly: true, crop: 1.25, eyes: true, mouth: true } };
       await this.addRecord(rec);
     }
 
@@ -122,7 +126,7 @@
       }
       await FC.storage.avatars.put(rec);
       this.records.unshift(rec);
-      await this.selectAvatar(rec.id);
+      await this.selectAvatar(rec.id, { skipPrompt: true });
       toast(`Added "${rec.name}" to your collection`, 'ok');
       if (rec.kind === 'image') this.autoPoints(rec);
     }
@@ -141,7 +145,18 @@
           return;
         }
       } catch (e) { console.warn('auto-detect failed', e); }
-      toast('Tip: tap "Set face points" to line up your NFT\'s eyes and mouth.', 'info', 6500);
+      this.promptPoints(rec);
+    }
+
+    // Cartoon characters usually need a quick tap on the eyes & mouth.
+    promptPoints(rec) {
+      const c = this.cache[rec.id];
+      if (!c || !c.prepared || rec.kind !== 'image') return;
+      rec.promptedPoints = true;
+      if (!rec.builtin) FC.storage.avatars.put(rec);
+      this.closeSheet();
+      toast('Quick setup: tap your NFT\'s eyes and mouth so it lines up with your face.', 'info', 6000);
+      this.editor.open(rec, c.prepared, true);
     }
 
     onPointsSaved(rec, silent) {
@@ -167,7 +182,7 @@
         if (!isModel && !/^image\//.test(blob.type) && blob.type) throw new Error('That link is not an image');
         const name = decodeURIComponent(url.split('/').pop().split('?')[0]).replace(/\.[^.]+$/, '').slice(0, 40) || 'Imported NFT';
         $('urlInput').value = '';
-        await this.addRecord({ id: uid(), name, kind: isModel ? 'model' : 'image', blob, created: Date.now(), points: null, removeBg: null, lidColor: null });
+        await this.addRecord({ id: uid(), name, kind: isModel ? 'model' : 'image', blob, created: Date.now(), points: null, removeBg: null, lidColor: null, opts: { headOnly: true, crop: 1.25, eyes: true, mouth: true } });
       } catch (e) {
         console.warn(e);
         toast("Couldn't import that link (the site may block direct downloads). Save the image to your device and upload it instead.", 'error', 7000);
@@ -303,8 +318,13 @@
       if (pose && pose.visible > 0) {
         const r = this.mode === '3d' ? this.av3 : this.av2;
         if (r && r.ready) {
+          const o = (this.current && this.current.opts) || {};
+          const expr = { ...pose.expr };
+          if (o.eyes === false) { expr.blinkL = expr.blinkR = expr.gazeX = expr.gazeY = 0; }
+          if (o.mouth === false) { expr.jaw = expr.smileL = expr.smileR = expr.pucker = 0; }
           r.render({
-            W, H, anchor: pose.anchor, R: pose.R, faceSize: pose.scale, opacity: pose.visible, expr: pose.expr,
+            W, H, anchor: pose.anchor, R: pose.R, faceSize: pose.scale, opacity: pose.visible, expr,
+            headOnly: !!o.headOnly, crop: o.crop,
             blendshapes: pose.blendshapes3d, exprGain: s.exprGain,
             size: s.size, offX: s.offX, offY: s.offY, roll: s.roll, depth: s.depth, oval: s.oval
           });
@@ -330,6 +350,9 @@
       $('pointsBtn').style.display = r.kind === 'image' ? '' : 'none';
       const rb = $('removeBgRow');
       rb.style.display = r.kind === 'image' && c.bgDetected ? '' : 'none';
+      rb.querySelector('small').textContent = c.risky
+        ? 'Off by default — your NFT uses its background colour, so cutting it out could leave holes'
+        : 'Cuts out solid-colour backgrounds (artwork untouched)';
       $('removeBg').checked = !!c.removeBg;
       $('heroAvatar').src = r.kind === 'image' ? c.url : this.cache['demo-neon-cat'] ? this.cache['demo-neon-cat'].url : '';
       $('modeChip').innerHTML = `<span class="pill">${r.kind === 'model' ? '3D Avatar mode' : '2D NFT mode'}</span>`;
@@ -428,12 +451,12 @@
       };
       $('pointsBtn').onclick = () => {
         const c = this.cache[this.current.id];
-        if (this.current.kind === 'image' && c && c.prepared) this.editor.open(this.current, c.prepared);
+        if (this.current.kind === 'image' && c && c.prepared) this.editor.open(this.current, c.prepared, !this.current.pointsSet && !this.current.builtin);
       };
       $('removeBg').onchange = async (e) => {
         const r = this.current; r.removeBg = e.target.checked;
         if (!r.builtin) FC.storage.avatars.put(r);
-        await this.selectAvatar(r.id);
+        await this.selectAvatar(r.id, { skipPrompt: true });
       };
 
       // output

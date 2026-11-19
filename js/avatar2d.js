@@ -38,7 +38,7 @@ varying vec2 v_px;
 varying float v_shade;
 uniform sampler2D u_tex;
 uniform vec2 u_size, u_eL, u_eR, u_er, u_m, u_blink, u_smile, u_brow, u_gaze, u_headC, u_headR;
-uniform float u_mw, u_mh, u_jaw, u_pucker, u_opacity, u_oval;
+uniform float u_mw, u_mh, u_jaw, u_pucker, u_opacity, u_oval, u_crop;
 uniform vec3 u_lid;
 
 vec4 tex(vec2 p){
@@ -119,8 +119,8 @@ void main(){
   col = lid(p, u_eR, u_blink.y, col, a);
 
   if (u_oval > 0.5) {
-    vec2 q = (p - u_headC) / (u_headR * 1.18);
-    a *= 1. - smoothstep(0.9, 1.0, length(q));
+    vec2 q = (p - u_headC) / (u_headR * u_crop);
+    a *= 1. - smoothstep(0.86, 1.0, length(q));
   }
   col *= v_shade;
   a *= u_opacity;
@@ -204,7 +204,7 @@ void main(){
         eL, eR, m, er: [pts.erx * w, pts.ery * h], mw: pts.mw * w,
         anchor: [(eL[0] + eR[0] + m[0]) / 3, (eL[1] + eR[1] + m[1]) / 3],
         headC: [eyeMid[0] + (m[0] - eyeMid[0]) * 0.25, eyeMid[1] + (m[1] - eyeMid[1]) * 0.25],
-        headR: [eyeDist * 1.45, eyeMouth * 2.3],
+        headR: [Math.max(eyeDist * 1.45, eyeMouth * 1.9), eyeMouth * 2.3],
         sN: (eyeDist + eyeMouth) / 2,
         mh: eyeMouth * 0.55
       };
@@ -261,7 +261,8 @@ void main(){
       gl.uniform2f(L.u_gaze, e.gazeX || 0, e.gazeY || 0);
       gl.uniform3f(L.u_lid, this.lid[0], this.lid[1], this.lid[2]);
       gl.uniform1f(L.u_opacity, s.opacity);
-      gl.uniform1f(L.u_oval, s.oval ? 1 : 0);
+      gl.uniform1f(L.u_oval, s.oval || s.headOnly ? 1 : 0);
+      gl.uniform1f(L.u_crop, s.headOnly ? (s.crop || 1.2) : 1.18);
       gl.drawElements(gl.TRIANGLES, this.count, gl.UNSIGNED_SHORT, 0);
     }
   }
