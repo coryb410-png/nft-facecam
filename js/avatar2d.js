@@ -254,10 +254,12 @@ void main(){
       if (s.fit && s.face && b) {
         const f = s.face;
         const hw = Math.max(1, b.x1 - b.x0), hh = Math.max(1, b.y1 - b.y0);
-        scale = Math.max(f.w * 1.18 / hw, f.h * 1.32 / hh) * (s.size || 1);
+        // The face landmarks run forehead→chin and cheek→cheek. A whole human head is bigger:
+        // skull + hair above (~0.5 face-heights), beard/jaw below (~0.25), ears at the sides.
+        scale = Math.max(f.w * 1.38 / hw, f.h * 1.75 / hh) * (s.size || 1);
         anchorN = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
-        // centre slightly above the face centre to cover hair / top of head
-        const up = f.h * 0.1;
+        // centre above the face centre so the extra coverage goes to the top of the head
+        const up = f.h * 0.13;
         anchorS = [f.cx + R[3] * up, f.cy - R[4] * up]; // along the head's "up" direction
         unit = f.h;
       }

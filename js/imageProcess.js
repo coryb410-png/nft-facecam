@@ -135,7 +135,7 @@
     const ex = (eL[0] + eR[0]) / 2, ey = (eL[1] + eR[1]) / 2;
     const eyeDist = Math.hypot(eR[0] - eL[0], eR[1] - eL[1]);
     const em = Math.max(4, Math.hypot(m[0] - ex, m[1] - ey));
-    const chin = m[1] + em * (chinK ?? 0.9);
+    let chin = m[1] + em * (chinK ?? 0.8), detectedChin = 0;
     const estHalfW = Math.max(eyeDist * 1.35, em * 1.55);
     let x0 = ex - estHalfW, x1 = ex + estHalfW, y0 = ey - em * 1.5;
     if (hasAlpha) {
@@ -159,8 +159,16 @@
         for (const ox of [-0.3, 0, 0.3]) T = Math.max(T, run(ex + ox * eyeDist, ey, 0, -1, em * 4));
         x0 = ex - Math.max(med(L), eyeDist * 0.8); x1 = ex + Math.max(med(R), eyeDist * 0.8);
         y0 = ey - Math.max(T, em * 0.8);
+        // Find the real chin: walk down from the mouth until the artwork ends (head-only art)
+        // or narrows into a neck (full-body art). Then the head keeps its natural outline.
+        const W0 = x1 - x0, cx = (x0 + x1) / 2;
+        for (let y = m[1] + em * 0.25; y < Math.min(h, m[1] + em * 2.6); y += 2) {
+          const wd = op(cx, y) ? run(cx, y, -1, 0, W0) + run(cx, y, 1, 0, W0) : 0;
+          if (wd < W0 * 0.6) { detectedChin = y + em * 0.06; break; }
+        }
       }
     }
+    if (detectedChin) chin = detectedChin + ((chinK ?? 0.8) - 0.8) * em;
     return { x0, y0, x1, y1: chin, em };
   }
 
