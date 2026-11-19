@@ -40,8 +40,8 @@
   <span class="pill" id="camStatus"><span class="dot"></span><span>Camera off</span></span>
   <span class="pill private hide-sm" title="Video is processed on this device and never uploaded or recorded.">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>100% on-device</span>
-  <button class="btn hide-sm" id="walletBtn" title="Wallet connection is coming soon — uploads work without a wallet.">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M16 13h2M3 10h18"/></svg>Connect wallet <small style="color:var(--muted)">soon</small></button>
+  <button class="btn hide-sm" id="walletBtn" title="Paste a wallet address to load its NFTs">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M16 13h2M3 10h18"/></svg>Load from wallet</button>
   <button class="btn desk-only" id="helpBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17.2v.1"/></svg>Use in Zoom / OBS</button>
 </header>
 
@@ -142,9 +142,12 @@
       <div class="grid" id="collection"></div>
       <p class="muted mt">Your collection is saved only in this browser on this device.</p>
 
-      <h3>Wallet <span class="chip" style="margin-left:6px">Coming soon</span></h3>
-      <div class="chips" id="chainChips"></div>
-      <p class="muted mt">Wallet connection is optional and not required. Soon you'll be able to load NFTs you own straight from your wallet.</p>
+      <h3>Load from a wallet</h3>
+      <div class="row">
+        <input class="input" id="walletQuick" placeholder="0x…, name.eth or Solana address" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="btn" id="walletQuickBtn">Find</button>
+      </div>
+      <p class="muted mt">Just paste an address — no wallet connection or signing. Reads Ethereum, Base, Polygon and Solana.</p>
     </div>
 
     <div class="tabpane" id="tab-adjust">
@@ -247,6 +250,22 @@
     <div class="row"><h2 style="flex:1">Use NFT FaceCam in Zoom, Discord, Meet & Twitch</h2><button class="btn" id="helpClose">Close</button></div>
     <ol class="ol mt" id="obsSteps2"></ol>
     <p class="muted"><b>Tip:</b> Choose the <b>Green</b> background and add a <i>Chroma Key</i> filter in OBS to place just your avatar over a game or slides.</p>
+  </div>
+</div>
+
+<!-- wallet lookup -->
+<div class="modal" id="wallet">
+  <div class="sheet wallet-sheet">
+    <div class="row"><div style="flex:1"><h2>Load NFTs from a wallet</h2><div class="muted">Paste any wallet address. Read-only — nothing to connect or sign.</div></div><button class="btn" id="walletClose">Close</button></div>
+    <form class="wallet-form" id="walletForm">
+      <input class="input" id="walletInput" placeholder="0x…, name.eth, Solana address or name.sol" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="btn primary" id="walletGo" type="submit">Find NFTs</button>
+    </form>
+    <div class="chain-tabs" id="chainTabs">
+      <button data-chain="all" class="active">All</button><button data-chain="eth">Ethereum</button><button data-chain="base">Base</button><button data-chain="polygon">Polygon</button><button data-chain="solana">Solana</button>
+    </div>
+    <div class="wallet-status" id="walletStatus"></div>
+    <div class="wallet-grid" id="walletGrid"></div>
   </div>
 </div>
 

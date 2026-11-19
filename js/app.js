@@ -52,6 +52,7 @@
       this.editor = new FC.FaceEditor(this);
       this.recorder = new FC.Recorder(this.out);
       this.mouth = new FC.MouthReader();
+      this.wallet = new FC.WalletLookup(this);
     }
 
     save() { FC.storage.settings.save(this.settings); }
@@ -62,7 +63,6 @@
       this.bindUI();
       if (IS_MOBILE) $('camBtn').querySelector('.lbl').textContent = 'Start';
       this.renderObsSteps();
-      $('chainChips').innerHTML = FC.config.WALLET_CHAINS.map(c => `<span class="chip">${c}</span>`).join('');
 
       const demos = FC.demoAvatars.map(d => {
         const o = this.settings.builtinOverrides[d.id] || {};
@@ -150,7 +150,7 @@
         const inner = r.kind === 'model' ? '<span class="glb">3D</span>' : c ? `<img src="${c.cleanUrl || c.url}" alt="">` : '';
         return `<button class="pick ${this.current && this.current.id === r.id ? 'selected' : ''}" data-id="${r.id}" title="${escapeHtml(r.name)}">${inner}</button>`;
       });
-      row.innerHTML = `<button class="pick add" id="pickAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Upload</button>` + tiles.join('');
+      row.innerHTML = `<button class="pick add" id="pickAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Upload</button><button class="pick add" id="pickWallet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M16 13h2M3 10h18"/></svg>Wallet</button>` + tiles.join('');
       if (this.current) $('pickerName').textContent = this.current.name;
     }
 
@@ -540,6 +540,7 @@
       $('stage').addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) this.addFile(f); });
       $('pickerRow').onclick = (e) => {
         if (e.target.closest('#pickAdd')) { $('fileInput').click(); return; }
+        if (e.target.closest('#pickWallet')) { this.wallet.open(); return; }
         const t = e.target.closest('.pick'); if (t) this.selectAvatar(t.dataset.id);
       };
       $('urlBtn').onclick = () => this.importUrl($('urlInput').value);
@@ -567,7 +568,7 @@
       $('popBtn').onclick = pop; $('popBtn2').onclick = pop;
       $('cleanBtn').onclick = () => this.setClean(true);
       $('cleanBtn2').onclick = () => this.setClean(true);
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.setClean(false); $('help').classList.remove('show'); $('result').classList.remove('show'); this.closeSheet(); } });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.setClean(false); $('help').classList.remove('show'); $('result').classList.remove('show'); this.wallet.close(); this.closeSheet(); } });
       $('stage').addEventListener('dblclick', () => { if (document.body.classList.contains('clean')) this.setClean(false); });
       $('fsBtn').onclick = () => {
         const st = $('stage');
@@ -578,7 +579,9 @@
       $('helpBtn').onclick = () => $('help').classList.add('show');
       $('helpClose').onclick = () => $('help').classList.remove('show');
       $('help').addEventListener('pointerdown', (e) => { if (e.target.id === 'help') $('help').classList.remove('show'); });
-      $('walletBtn').onclick = () => toast('Wallet connection is coming soon. For now, upload your NFT image or paste its link — no wallet needed.', 'info', 6000);
+      $('walletBtn').onclick = () => this.wallet.open();
+      $('walletQuickBtn').onclick = () => this.wallet.open($('walletQuick').value.trim());
+      $('walletQuick').onkeydown = (e) => { if (e.key === 'Enter') this.wallet.open(e.target.value.trim()); };
       window.addEventListener('beforeunload', () => this.output.close());
 
       // record & photo

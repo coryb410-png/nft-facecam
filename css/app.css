@@ -350,3 +350,27 @@ html.mobile .hero-copy h1 { font-size: 30px; }
 /* phones: the bottom camera controls only appear once the camera is on */
 html.mobile body:not(.live) .toolbar { display: none; }
 html.mobile body:not(.live) .overlay-chip { display: none; }
+
+/* ---------- wallet lookup ---------- */
+.wallet-sheet { width: min(760px, 100%); }
+.wallet-form { display: flex; gap: 8px; margin-top: 14px; }
+.wallet-form .input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.chain-tabs { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.chain-tabs button { border: 1px solid var(--line2); background: rgba(255, 255, 255, .03); color: var(--muted); padding: 7px 12px; border-radius: 999px; font: 600 12.5px var(--font); }
+.chain-tabs button.active { color: #fff; background: rgba(139, 92, 255, .3); border-color: rgba(160, 140, 255, .6); }
+.wallet-status { margin-top: 12px; font-size: 13px; color: var(--muted); line-height: 1.5; min-height: 20px; }
+.wallet-status.err { color: #ffb3c1; } .wallet-status.ok b, .wallet-status.warn b { color: #fff; }
+.wallet-status .spin { display: inline-block; width: 13px; height: 13px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid rgba(139, 92, 255, .25); border-top-color: var(--neon2); animation: spin .8s linear infinite; }
+.wallet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 14px; max-height: 58vh; overflow-y: auto; padding: 2px; }
+.wnft { position: relative; display: flex; flex-direction: column; text-align: left; padding: 0 0 10px; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: rgba(255, 255, 255, .03); color: var(--text); transition: .18s; }
+.wnft:hover { border-color: rgba(160, 140, 255, .6); transform: translateY(-2px); }
+.wnft .wimg { aspect-ratio: 1; background: radial-gradient(circle at 50% 40%, rgba(139, 92, 255, .2), rgba(0, 0, 0, .25)); display: block; }
+.wnft img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.wnft .wname { padding: 8px 10px 0; font-weight: 700; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wnft .wcoll { padding: 2px 10px 0; color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wnft .wbadge { position: absolute; top: 8px; left: 8px; font: 800 10px var(--font); letter-spacing: .5px; padding: 3px 7px; border-radius: 7px; background: rgba(0, 0, 0, .65); color: #fff; }
+.wbadge.eth { color: #b9c4ff; } .wbadge.base { color: #6ea8ff; } .wbadge.polygon { color: #c9a5ff; } .wbadge.solana { color: #5ff5c8; }
+.wnft.broken { display: none; }
+.wnft.loading::after { content: 'Loading…'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(7, 6, 15, .7); font-weight: 700; font-size: 13px; }
+html.mobile .wallet-form { flex-direction: column; }
+html.mobile .wallet-grid { grid-template-columns: repeat(2, 1fr); max-height: none; }

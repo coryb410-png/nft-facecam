@@ -1,0 +1,7 @@
+{
+  "name": "nft-facecam",
+  "private": true,
+  "description": "NFT FaceCam - static web app (repo root) + NFT reader service (api/)",
+  "scripts": { "start": "node api/server.js" },
+  "engines": { "node": ">=18" }
+}

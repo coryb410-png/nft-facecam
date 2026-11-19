@@ -24,7 +24,6 @@ FC.config = {
   // Output window title — this is the window you pick in OBS
   OUTPUT_WINDOW_TITLE: 'NFT FaceCam Output',
 
-  // Future wallet support (see js/wallet.js)
-  WALLET_CHAINS: ['Ethereum', 'Polygon', 'Base', 'Solana'],
-  NFT_INDEXER_URL: '' // e.g. your own API that returns [{name,image,chain}] for an address
+  // NFT reader service (api/server.js) used by "Load from wallet"
+  NFT_API_URL: 'https://nft-facecam-api.onrender.com'
 };
