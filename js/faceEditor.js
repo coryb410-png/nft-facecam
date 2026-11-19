@@ -8,7 +8,6 @@
     { key: 'eR', text: 'Now tap the <b>right eye</b>' },
     { key: 'm', text: 'Now tap the <b>mouth</b> (the middle of it)' }
   ];
-  const DEFAULT_OPTS = { headOnly: false, crop: 1.25, eyes: true, mouth: true };
 
   class FaceEditor {
     constructor(app) {
@@ -61,6 +60,8 @@
       this.lidInput.oninput = () => { this.lid = this.lidInput.value; this.updatePreview(); };
       $('edHeadOnly').onchange = (e) => { this.opts.headOnly = e.target.checked; this.syncOpts(); };
       $('edCrop').oninput = (e) => { this.opts.crop = +e.target.value; this.syncOpts(); };
+      $('edChin').oninput = (e) => { this.opts.chin = +e.target.value; this.syncOpts(); };
+      $('edFit').onchange = (e) => { this.opts.fit = e.target.checked; };
       $('edEyes').onchange = (e) => { this.opts.eyes = e.target.checked; };
       $('edMouth').onchange = (e) => { this.opts.mouth = e.target.checked; };
       this.modal.addEventListener('pointerdown', (e) => { if (e.target === this.modal) this.close(); });
@@ -71,7 +72,11 @@
       $('edHeadOnly').checked = !!this.opts.headOnly;
       $('edCrop').value = this.opts.crop;
       $('edCropOut').textContent = Math.round(this.opts.crop * 100) + '%';
-      $('edCropRow').style.display = this.opts.headOnly ? '' : 'none';
+      $('edChin').value = this.opts.chin;
+      $('edChinOut').textContent = this.opts.chin < 0.7 ? 'high' : this.opts.chin > 1.4 ? 'low' : 'chin';
+      $('edCropRow').style.display = $('edChinRow').style.display = this.opts.headOnly ? '' : 'none';
+      $('edFit').checked = this.opts.fit !== false;
+      this.updateHead();
       $('edEyes').checked = this.opts.eyes !== false;
       $('edMouth').checked = this.opts.mouth !== false;
       this.draw();
@@ -127,7 +132,7 @@
       this.rec = rec; this.img = img;
       this.cv.width = img.width; this.cv.height = img.height;
       this.pts = JSON.parse(JSON.stringify(rec.points || FC.imageProcess.defaultPoints(img.width, img.height)));
-      this.opts = { ...DEFAULT_OPTS, ...(rec.opts || {}) };
+      this.opts = { ...FC.AVATAR_OPTS, ...(rec.opts && rec.opts.v === 2 ? rec.opts : {}) };
       this.lid = rec.lidColor || FC.imageProcess.sampleLidColor(img, this.pts);
       this.lidInput.value = this.lid;
       this.modal.classList.add('show');
@@ -176,13 +181,17 @@
       ctx.clearRect(0, 0, w, h);
       ctx.drawImage(this.img, 0, 0);
       // head-only crop preview
-      if (this.opts && this.opts.headOnly && this.preview && this.preview.g) {
-        const g = this.preview.g, c = this.opts.crop;
+      if (this.opts && this.opts.headOnly && this.box && this.step < 0) {
+        const b = this.box, c = this.opts.crop;
+        const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, hx = (b.x1 - b.x0) / 2 * c, hy = (b.y1 - b.y0) / 2 * c;
         ctx.save();
-        ctx.fillStyle = 'rgba(7,6,15,.6)';
+        ctx.fillStyle = 'rgba(7,6,15,.72)';
         ctx.beginPath(); ctx.rect(0, 0, w, h);
-        ctx.ellipse(g.headC[0], g.headC[1], g.headR[0] * c, g.headR[1] * c, 0, 0, 7, true);
+        if (this.hasAlpha) { const sx = hx * 1.3; ctx.rect(cx + sx, b.y1, -2 * sx, -b.y1); } // keep everything above the neck cut
+        else ctx.ellipse(cx, cy, hx * 1.1, hy * 1.1, 0, 0, 7, true);
         ctx.fill('evenodd');
+        ctx.setLineDash([8 * k, 6 * k]); ctx.lineWidth = 2 * k; ctx.strokeStyle = '#22f0d0';
+        ctx.beginPath(); ctx.moveTo(0, b.y1); ctx.lineTo(w, b.y1); ctx.stroke();
         ctx.restore();
       }
       const set = (key) => this.step < 0 || STEPS.findIndex(s => s.key === key) < this.step;
@@ -206,7 +215,13 @@
       if (this.step < 0) { sq((p.eL[0] + p.erx) * w, (p.eL[1] + p.ery) * h); sq((p.m[0] + p.mw) * w, p.m[1] * h); }
     }
 
-    updatePreview() { if (this.preview && this.preview.ready) { this.preview.setPoints(this.pts, this.lid); this.draw(); } }
+    updateHead() {
+      if (!this.img || !this.pts) return;
+      this.hasAlpha = this.app.cache[this.rec.id] ? this.app.cache[this.rec.id].hasAlpha : false;
+      this.box = FC.imageProcess.headBox(this.img, this.pts, this.opts.chin, this.hasAlpha);
+      if (this.preview && this.preview.ready) this.preview.setHead(this.box, this.hasAlpha);
+    }
+    updatePreview() { if (this.preview && this.preview.ready) { this.preview.setPoints(this.pts, this.lid); this.updateHead(); this.draw(); } }
 
     startPreview() {
       const t0 = performance.now();
@@ -215,7 +230,7 @@
         const t = (performance.now() - t0) / 1000;
         const g = this.preview.g, W = 400, H = 400, o = this.opts;
         // frame the face (not the whole image) like it will look on camera
-        const k = 120 / g.sN * (o.headOnly ? 1 : 0.8);
+        const k = 120 / g.sN * 0.8;
         const yaw = Math.sin(t * 0.9) * 0.35;
         const R = [Math.cos(yaw), 0, -Math.sin(yaw), 0, 1, 0, Math.sin(yaw), 0, Math.cos(yaw)];
         const ph = t % 2.6;
@@ -224,7 +239,7 @@
         this.preview.render({
           W, H, R, opacity: 1, size: 1, depth: this.app.settings.depth,
           anchor: [W / 2, H / 2], faceSize: g.sN * k,
-          headOnly: o.headOnly, crop: o.crop,
+          headOnly: o.headOnly, crop: o.crop, fit: o.headOnly, face: { cx: W / 2, cy: H / 2 + 20, w: 150, h: 175 },
           expr: { blinkL: blink, blinkR: blink, jaw: talk, smileL: 0.2, smileR: 0.2, gazeX: o.eyes === false ? 0 : Math.sin(t * 0.7) * 0.6 }
         });
         this.anim = requestAnimationFrame(tick);

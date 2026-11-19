@@ -22,7 +22,7 @@
       f.minCutoff = minC; f.beta = beta;
       return f.filter(v, t);
     }
-    reset() { this.f = {}; this.expr = null; this.pose = null; }
+    reset() { this.f = {}; this.expr = null; this.pose = null; this.eyeBase = null; }
 
     /**
      * @param det {landmarks, blendshapes}
@@ -43,6 +43,9 @@
       const eyeMid = v3.mid(eL, eR);
       const anchor = avg(eL, eR, mouth);
       const sU = (v3.len(v3.sub(eL, eR)) + v3.len(v3.sub(eyeMid, mouth))) / 2;
+      const top = S(10), chin = S(152);
+      const faceC = v3.mid(top, chin);
+      const faceW = v3.len(v3.sub(S(234), S(454))), faceH = v3.len(v3.sub(top, chin));
 
       // head orientation basis
       const cheekA = T(234), cheekB = T(454);
@@ -54,6 +57,10 @@
       const ax = this.filt('ax', anchor[0], t, minC, beta * 0.02);
       const ay = this.filt('ay', anchor[1], t, minC, beta * 0.02);
       const ss = this.filt('s', sU, t, minC * 0.7, beta * 0.01);
+      const face = {
+        cx: this.filt('fx', faceC[0], t, minC, beta * 0.02), cy: this.filt('fy', faceC[1], t, minC, beta * 0.02),
+        w: this.filt('fw', faceW, t, minC * 0.7, beta * 0.01), h: this.filt('fh', faceH, t, minC * 0.7, beta * 0.01)
+      };
       xAxis = xAxis.map((v, i) => this.filt('x' + i, v / sU, t, minC, beta));
       yAxis = yAxis.map((v, i) => this.filt('y' + i, v / sU, t, minC, beta));
 
@@ -68,11 +75,20 @@
       const b = (k) => bs[k] || 0;
       // "image-left" = left side of the screen (= NFT's image-left eye)
       const L = mirror ? 'Left' : 'Right', Rt = mirror ? 'Right' : 'Left';
-      const blinkMap = (v) => clamp((v - 0.32) / 0.32 * (0.6 + 0.4 * g));
+      if (!this.eyeBase) this.eyeBase = { Left: 0.3, Right: 0.3 };
+      for (const side of ['Left', 'Right']) {
+        const v = b('eyeBlink' + side);
+        // baseline follows the open-eye value: drops instantly, rises slowly
+        this.eyeBase[side] = v < this.eyeBase[side] ? lerp(this.eyeBase[side], v, 0.3) : this.eyeBase[side] + 0.0015;
+      }
+      const blinkFor = (side) => {
+        const v = b('eyeBlink' + side), base = Math.min(this.eyeBase[side], 0.55);
+        return clamp((v - base - 0.12) / Math.max(0.2, (0.85 - base) * 0.6) * (0.6 + 0.4 * g));
+      };
       const gazeSubjLeft = (b('eyeLookOutLeft') + b('eyeLookInRight') - b('eyeLookInLeft') - b('eyeLookOutRight')) / 2;
       const target = {
-        blinkL: blinkMap(b('eyeBlink' + L)),
-        blinkR: blinkMap(b('eyeBlink' + Rt)),
+        blinkL: blinkFor(L),
+        blinkR: blinkFor(Rt),
         jaw: clamp((b('jawOpen') - 0.04) / 0.45 * g),
         smileL: clamp(b('mouthSmile' + L) * 1.3 * g),
         smileR: clamp(b('mouthSmile' + Rt) * 1.3 * g),
@@ -90,7 +106,7 @@
 
       this.lastSeen = t;
       this.pose = {
-        anchor: [ax, ay], scale: ss, R, expr: { ...this.expr },
+        anchor: [ax, ay], scale: ss, face, R, expr: { ...this.expr },
         blendshapes3d: mirror ? swapLR(bs) : bs, visible: 1
       };
       return this.pose;

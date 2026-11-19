@@ -95,7 +95,73 @@
     const auto = removeBgPref === null || removeBgPref === undefined;
     const removeBg = auto ? (!!bg && !risky) : removeBgPref;
     if (removeBg && bg) removeBackground(canvas, bg);
-    return { canvas, bgDetected: !!bg, removeBg: removeBg && !!bg, risky };
+    const hasAlpha = alphaFraction(canvas) > 0.03;
+    if (hasAlpha) smoothEdges(canvas);
+    return { canvas, bgDetected: !!bg, removeBg: removeBg && !!bg, risky, hasAlpha };
+  }
+
+  function alphaFraction(canvas) {
+    const { width: w, height: h } = canvas;
+    const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+    let n = 0, t = 0;
+    for (let i = 3; i < d.length; i += 16) { n++; if (d[i] < 20) t++; }
+    return t / n;
+  }
+
+  // "Auto-enhance": smooth jagged cut-out edges (only the outline, never the artwork's colours)
+  function smoothEdges(canvas) {
+    const { width: w, height: h } = canvas;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const im = ctx.getImageData(0, 0, w, h); const d = im.data;
+    const a0 = new Uint8ClampedArray(w * h);
+    for (let p = 0; p < w * h; p++) a0[p] = d[p * 4 + 3];
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x, a = a0[p];
+      const mn = Math.min(a0[p - 1], a0[p + 1], a0[p - w], a0[p + w]);
+      const mx = Math.max(a0[p - 1], a0[p + 1], a0[p - w], a0[p + w]);
+      if (mx - mn < 60) continue; // not an edge
+      let s = 0;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) s += a0[p + j * w + i] * (i === 0 && j === 0 ? 4 : (i === 0 || j === 0) ? 2 : 1);
+      d[p * 4 + 3] = Math.min(a, Math.round(s / 16) + (a > 200 ? 20 : 0));
+    }
+    ctx.putImageData(im, 0, 0);
+  }
+
+  /** Find the character's head in the artwork (NFT pixels): sides, top and a chin cut line.
+   *  chinK = how far below the mouth to cut (in eye-to-mouth distances). */
+  function headBox(canvas, pts, chinK, hasAlpha) {
+    const { width: w, height: h } = canvas;
+    const eL = [pts.eL[0] * w, pts.eL[1] * h], eR = [pts.eR[0] * w, pts.eR[1] * h], m = [pts.m[0] * w, pts.m[1] * h];
+    const ex = (eL[0] + eR[0]) / 2, ey = (eL[1] + eR[1]) / 2;
+    const eyeDist = Math.hypot(eR[0] - eL[0], eR[1] - eL[1]);
+    const em = Math.max(4, Math.hypot(m[0] - ex, m[1] - ey));
+    const chin = m[1] + em * (chinK ?? 0.9);
+    const estHalfW = Math.max(eyeDist * 1.35, em * 1.55);
+    let x0 = ex - estHalfW, x1 = ex + estHalfW, y0 = ey - em * 1.5;
+    if (hasAlpha) {
+      const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+      const op = (x, y) => { x = Math.round(x); y = Math.round(y); return x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 40; };
+      const run = (x, y, dx, dy, max) => { // walk while opaque, allowing small gaps
+        let gap = 0, last = 0;
+        for (let t = 1; t < max; t++) {
+          if (op(x + dx * t, y + dy * t)) { gap = 0; last = t; } else if (++gap > 4) break;
+        }
+        return last;
+      };
+      if (op(ex, ey) || op(ex, (ey + m[1]) / 2)) {
+        const L = [], R = [];
+        for (let k = -2; k <= 2; k++) {
+          const y = ey + k * em * 0.15;
+          L.push(run(ex, y, -1, 0, em * 4)); R.push(run(ex, y, 1, 0, em * 4));
+        }
+        const med = a => a.sort((p, q) => p - q)[a.length >> 1];
+        let T = 0;
+        for (const ox of [-0.3, 0, 0.3]) T = Math.max(T, run(ex + ox * eyeDist, ey, 0, -1, em * 4));
+        x0 = ex - Math.max(med(L), eyeDist * 0.8); x1 = ex + Math.max(med(R), eyeDist * 0.8);
+        y0 = ey - Math.max(T, em * 0.8);
+      }
+    }
+    return { x0, y0, x1, y1: chin, em };
   }
 
   // Bounding box of the visible artwork (used to guess where a character's head is)
@@ -151,5 +217,5 @@
     return { eL: imgLeftEye, eR: imgRightEye, m: mouth, erx: ex * 0.62, ery: Math.max(ey * 0.75, ex * 0.35 * w / h), mw: mw * 1.05 };
   }
 
-  FC.imageProcess = { prepare, contentBox, sampleLidColor, defaultPoints, pointsFromLandmarks, detectSolidBackground };
+  FC.imageProcess = { prepare, contentBox, headBox, sampleLidColor, defaultPoints, pointsFromLandmarks, detectSolidBackground };
 })();

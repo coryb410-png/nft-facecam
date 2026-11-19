@@ -15,6 +15,17 @@
     roll: v => (v > 0 ? '+' : '') + v + '°', smoothing: v => Math.round(v * 100) + '%', exprGain: v => Math.round(v * 100) + '%', depth: v => Math.round(v * 100) + '%'
   };
 
+  // Per-avatar options. v2 = head-only + auto-fit on for every avatar.
+  FC.AVATAR_OPTS = { v: 2, headOnly: true, fit: true, crop: 1, chin: 0.8, eyes: true, mouth: true };
+  function avatarOpts(rec) {
+    if (!rec.opts || rec.opts.v !== 2) {
+      const old = rec.opts || {};
+      rec.opts = { ...FC.AVATAR_OPTS, eyes: old.eyes !== false, mouth: old.mouth !== false };
+      rec._migrated = true;
+    }
+    return rec.opts;
+  }
+
   class App {
     constructor() {
       this.settings = FC.storage.settings.load(DEFAULTS);
@@ -50,7 +61,7 @@
 
       const demos = FC.demoAvatars.map(d => {
         const o = this.settings.builtinOverrides[d.id] || {};
-        return { ...d, points: o.points || d.points, lidColor: o.lidColor || d.lidColor };
+        return { ...d, points: o.points || d.points, lidColor: o.lidColor || d.lidColor, opts: o.opts || null };
       });
       const mine = await FC.storage.avatars.list();
       this.records = [...mine, ...demos];
@@ -76,7 +87,7 @@
 
     prepare(rec, c) {
       const p = FC.imageProcess.prepare(c.img, rec.removeBg);
-      c.prepared = p.canvas; c.bgDetected = p.bgDetected; c.removeBg = p.removeBg; c.risky = p.risky;
+      c.prepared = p.canvas; c.bgDetected = p.bgDetected; c.removeBg = p.removeBg; c.risky = p.risky; c.hasAlpha = p.hasAlpha;
       return c;
     }
 
@@ -97,15 +108,15 @@
           if (!rec.points) rec.points = FC.imageProcess.defaultPoints(c.prepared.width, c.prepared.height);
           if (!rec.lidColor) rec.lidColor = FC.imageProcess.sampleLidColor(c.prepared, rec.points);
           this.av2.setAvatar(c.prepared, rec.points, rec.lidColor);
+          avatarOpts(rec);
+          if (rec._migrated) { delete rec._migrated; this.persist(rec); }
+          this.applyHead(rec);
           this.mode = '2d';
         }
         this.current = rec;
         this.settings.avatarId = id; this.save();
         this.renderCurrent(); this.renderCollection();
-        if (rec.kind === 'image' && !rec.builtin && !rec.pointsSet && !rec.promptedPoints && !opts.skipPrompt) {
-          if (!rec.opts) rec.opts = { headOnly: true, crop: 1.25, eyes: true, mouth: true };
-          this.promptPoints(rec);
-        }
+        if (rec.kind === 'image' && !rec.builtin && !rec.pointsSet && !rec.promptedPoints && !opts.skipPrompt) this.promptPoints(rec);
       } catch (e) {
         console.error(e);
         toast(rec.kind === 'model' ? '3D avatars need an internet connection the first time, and a valid .glb file: ' + e.message : e.message, 'error', 6000);
@@ -115,7 +126,7 @@
     async addFile(file) {
       const isModel = /\.(glb|gltf)$/i.test(file.name) || /gltf/.test(file.type);
       if (!isModel && !/^image\//.test(file.type)) { toast('Please choose a PNG, JPG, WebP image or a .glb 3D model.', 'error'); return; }
-      const rec = { id: uid(), name: file.name.replace(/\.[^.]+$/, '').slice(0, 40) || 'My NFT', kind: isModel ? 'model' : 'image', blob: file, created: Date.now(), points: null, removeBg: null, lidColor: null, opts: { headOnly: true, crop: 1.25, eyes: true, mouth: true } };
+      const rec = { id: uid(), name: file.name.replace(/\.[^.]+$/, '').slice(0, 40) || 'My NFT', kind: isModel ? 'model' : 'image', blob: file, created: Date.now(), points: null, removeBg: null, lidColor: null, opts: null };
       await this.addRecord(rec);
     }
 
@@ -159,11 +170,23 @@
       this.editor.open(rec, c.prepared, true);
     }
 
-    onPointsSaved(rec, silent) {
+    persist(rec) {
       if (rec.builtin) {
-        this.settings.builtinOverrides[rec.id] = { points: rec.points, lidColor: rec.lidColor }; this.save();
+        this.settings.builtinOverrides[rec.id] = { points: rec.points, lidColor: rec.lidColor, opts: rec.opts }; this.save();
       } else FC.storage.avatars.put(rec);
-      if (this.current && this.current.id === rec.id && this.mode === '2d') this.av2.setPoints(rec.points, rec.lidColor);
+    }
+
+    // find the NFT's head (for the head-only cut and auto-fit)
+    applyHead(rec) {
+      const c = this.cache[rec.id];
+      if (!c || !c.prepared || !rec.points) return;
+      const o = avatarOpts(rec);
+      this.av2.setHead(FC.imageProcess.headBox(c.prepared, rec.points, o.chin, c.hasAlpha), c.hasAlpha);
+    }
+
+    onPointsSaved(rec, silent) {
+      this.persist(rec);
+      if (this.current && this.current.id === rec.id && this.mode === '2d') { this.av2.setPoints(rec.points, rec.lidColor); this.applyHead(rec); }
       if (!silent) toast('Face points saved', 'ok');
     }
 
@@ -182,7 +205,7 @@
         if (!isModel && !/^image\//.test(blob.type) && blob.type) throw new Error('That link is not an image');
         const name = decodeURIComponent(url.split('/').pop().split('?')[0]).replace(/\.[^.]+$/, '').slice(0, 40) || 'Imported NFT';
         $('urlInput').value = '';
-        await this.addRecord({ id: uid(), name, kind: isModel ? 'model' : 'image', blob, created: Date.now(), points: null, removeBg: null, lidColor: null, opts: { headOnly: true, crop: 1.25, eyes: true, mouth: true } });
+        await this.addRecord({ id: uid(), name, kind: isModel ? 'model' : 'image', blob, created: Date.now(), points: null, removeBg: null, lidColor: null, opts: null });
       } catch (e) {
         console.warn(e);
         toast("Couldn't import that link (the site may block direct downloads). Save the image to your device and upload it instead.", 'error', 7000);
@@ -318,13 +341,13 @@
       if (pose && pose.visible > 0) {
         const r = this.mode === '3d' ? this.av3 : this.av2;
         if (r && r.ready) {
-          const o = (this.current && this.current.opts) || {};
+          const o = this.current ? avatarOpts(this.current) : FC.AVATAR_OPTS;
           const expr = { ...pose.expr };
           if (o.eyes === false) { expr.blinkL = expr.blinkR = expr.gazeX = expr.gazeY = 0; }
           if (o.mouth === false) { expr.jaw = expr.smileL = expr.smileR = expr.pucker = 0; }
           r.render({
             W, H, anchor: pose.anchor, R: pose.R, faceSize: pose.scale, opacity: pose.visible, expr,
-            headOnly: !!o.headOnly, crop: o.crop,
+            headOnly: !!o.headOnly, fit: !!o.fit, crop: o.crop, face: pose.face,
             blendshapes: pose.blendshapes3d, exprGain: s.exprGain,
             size: s.size, offX: s.offX, offY: s.offY, roll: s.roll, depth: s.depth, oval: s.oval
           });

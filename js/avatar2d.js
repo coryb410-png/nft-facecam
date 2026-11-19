@@ -38,7 +38,8 @@ varying vec2 v_px;
 varying float v_shade;
 uniform sampler2D u_tex;
 uniform vec2 u_size, u_eL, u_eR, u_er, u_m, u_blink, u_smile, u_brow, u_gaze, u_headC, u_headR;
-uniform float u_mw, u_mh, u_jaw, u_pucker, u_opacity, u_oval, u_crop;
+uniform float u_mw, u_mh, u_jaw, u_pucker, u_opacity, u_oval, u_crop, u_cut, u_chin, u_fade;
+uniform vec4 u_box;
 uniform vec3 u_lid;
 
 vec4 tex(vec2 p){
@@ -118,8 +119,21 @@ void main(){
   col = lid(p, u_eL, u_blink.x, col, a);
   col = lid(p, u_eR, u_blink.y, col, a);
 
-  if (u_oval > 0.5) {
-    vec2 q = (p - u_headC) / (u_headR * u_crop);
+  // head-only cut: remove the body below the chin, and anything far to the sides
+  if (u_cut > 0.5) {
+    a *= 1. - smoothstep(u_chin - u_fade, u_chin + u_fade, p.y);
+    vec2 c = vec2((u_box.x + u_box.z) * .5, (u_box.y + u_chin) * .5);
+    vec2 hr = vec2((u_box.z - u_box.x) * .5, (u_chin - u_box.y) * .5) * u_crop;
+    if (u_cut < 1.5) {
+      // transparent artwork: keep hats / halos / fins above, trim far sides
+      a *= 1. - smoothstep(-u_fade, u_fade, abs(p.x - c.x) - hr.x * 1.3);
+    } else {
+      // artwork with a background: soft oval around the head
+      vec2 q = (p - c) / (hr * 1.1);
+      a *= 1. - smoothstep(0.88, 1.0, length(q));
+    }
+  } else if (u_oval > 0.5) {
+    vec2 q = (p - u_headC) / (u_headR * 1.18);
     a *= 1. - smoothstep(0.86, 1.0, length(q));
   }
   col *= v_shade;
@@ -172,8 +186,15 @@ void main(){
       this.w = w; this.h = h;
       gl.bindTexture(gl.TEXTURE_2D, this.tex);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      // "auto-enhance": upload as a 1024² power-of-two texture with mipmaps so the NFT
+      // stays crisp and smooth (no jaggies) at any size on screen
+      const pot = document.createElement('canvas'); pot.width = pot.height = 1024;
+      const pc = pot.getContext('2d'); pc.imageSmoothingQuality = 'high'; pc.drawImage(img, 0, 0, 1024, 1024);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pot);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      const af = gl.getExtension('EXT_texture_filter_anisotropic');
+      if (af) gl.texParameterf(gl.TEXTURE_2D, af.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(af.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -212,6 +233,9 @@ void main(){
       this.lid = rgb.map(v => v / 255);
     }
 
+    // head region in artwork pixels (from FC.imageProcess.headBox)
+    setHead(box, hasAlpha) { this.box = box; this.hasAlpha = !!hasAlpha; }
+
     /** s: {W,H, anchor:[x,y] screen px, R (col-major mat3), faceSize, size, offX, offY, roll(deg), depth, oval, opacity, expr} */
     render(s) {
       const gl = this.gl, c = this.canvas;
@@ -223,7 +247,21 @@ void main(){
       const g = this.g, L = this.loc, e = s.expr;
       const R = mul3(s.R, rotZ((s.roll || 0) * Math.PI / 180));
       const fs = s.faceSize;
-      const ox = (s.offX || 0) * fs, oy = (s.offY || 0) * fs;
+      const b = this.box;
+      // Auto-fit: size & place the NFT head so it covers the whole human head (forehead to chin,
+      // cheek to cheek, plus hair) instead of just lining up eyes & mouth.
+      let anchorN = g.anchor, anchorS = s.anchor, scale = fs / g.sN * (s.size || 1), unit = fs;
+      if (s.fit && s.face && b) {
+        const f = s.face;
+        const hw = Math.max(1, b.x1 - b.x0), hh = Math.max(1, b.y1 - b.y0);
+        scale = Math.max(f.w * 1.18 / hw, f.h * 1.32 / hh) * (s.size || 1);
+        anchorN = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+        // centre slightly above the face centre to cover hair / top of head
+        const up = f.h * 0.1;
+        anchorS = [f.cx + R[3] * up, f.cy - R[4] * up]; // along the head's "up" direction
+        unit = f.h;
+      }
+      const ox = (s.offX || 0) * unit * 0.5, oy = (s.offY || 0) * unit * 0.5;
       const off = [R[0] * ox + R[3] * oy, R[1] * ox + R[4] * oy];
       const D = s.H / 2 / Math.tan(17.5 * Math.PI / 180);
 
@@ -237,13 +275,13 @@ void main(){
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex);
 
       gl.uniform1i(L.u_tex, 0);
-      gl.uniform2f(L.u_anchorN, g.anchor[0], g.anchor[1]);
+      gl.uniform2f(L.u_anchorN, anchorN[0], anchorN[1]);
       gl.uniform2f(L.u_headC, g.headC[0], g.headC[1]);
       gl.uniform2f(L.u_headR, g.headR[0], g.headR[1]);
-      gl.uniform2f(L.u_anchorS, s.anchor[0] - s.W / 2 + off[0], s.H / 2 - s.anchor[1] + off[1]);
+      gl.uniform2f(L.u_anchorS, anchorS[0] - s.W / 2 + off[0], s.H / 2 - anchorS[1] + off[1]);
       gl.uniform2f(L.u_res, s.W, s.H);
       gl.uniform1f(L.u_depth, s.depth ?? 0.35);
-      gl.uniform1f(L.u_scale, fs / g.sN * (s.size || 1));
+      gl.uniform1f(L.u_scale, scale);
       gl.uniform1f(L.u_D, D);
       gl.uniformMatrix3fv(L.u_rot, false, new Float32Array(R));
       gl.uniform2f(L.u_size, this.w, this.h);
@@ -261,8 +299,13 @@ void main(){
       gl.uniform2f(L.u_gaze, e.gazeX || 0, e.gazeY || 0);
       gl.uniform3f(L.u_lid, this.lid[0], this.lid[1], this.lid[2]);
       gl.uniform1f(L.u_opacity, s.opacity);
-      gl.uniform1f(L.u_oval, s.oval || s.headOnly ? 1 : 0);
-      gl.uniform1f(L.u_crop, s.headOnly ? (s.crop || 1.2) : 1.18);
+      gl.uniform1f(L.u_oval, s.oval ? 1 : 0);
+      const cut = s.headOnly && b ? (this.hasAlpha && !s.oval ? 1 : 2) : 0;
+      gl.uniform1f(L.u_cut, cut);
+      gl.uniform1f(L.u_crop, s.crop || 1);
+      gl.uniform4f(L.u_box, b ? b.x0 : 0, b ? b.y0 : 0, b ? b.x1 : 0, b ? b.y1 : 0);
+      gl.uniform1f(L.u_chin, b ? b.y1 : 0);
+      gl.uniform1f(L.u_fade, b ? Math.max(1.5, b.em * 0.12) : 1);
       gl.drawElements(gl.TRIANGLES, this.count, gl.UNSIGNED_SHORT, 0);
     }
   }
